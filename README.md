@@ -54,7 +54,7 @@ You need **armadaOS** with **Decky Loader**, and a game that offers **DLSS, FSR 
 
 | works | does not work |
 |---|---|
-| Resident Evil 4, Control, Bright Memory: Infinite, Into the Dead: Our Darkest Days, Deep Rock Galactic | Ghostrunner, Cyberpunk 2077, games without DLSS / FSR / XeSS, online games with anti-cheat |
+| Resident Evil 4, Control, Bright Memory: Infinite, Into the Dead: Our Darkest Days, Deep Rock Galactic | games without DLSS / FSR / XeSS, online games with anti-cheat |
 
 Other games with DLSS, FSR 2/3 or XeSS should work too. Tell us how it goes: [Report a problem](#report-a-problem).
 
