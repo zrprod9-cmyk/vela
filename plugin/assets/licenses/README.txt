@@ -3,8 +3,8 @@ Licenses of everything in this zip (Vela 0.8.16). Every file of the zip is liste
 upscale/plugin.json, package.json, main.py, py_modules/*.py, dist/index.js
                               the Vela plugin itself: GPL-3.0-only (../../LICENSE = Vela-plugin-GPL-3.0.txt). Started from the
                               Decky plugin template (BSD-3-Clause, notice kept in decky-plugin-template-BSD-3-Clause.txt).
-upscale/assets/sgsr3/OptiScaler.dll   our fork of OptiScaler (Sloptiscaler f80e4da3, ARM64EC build; md5 62622479...):
-                              GPL-3.0 (OptiScaler-GPL-3.0.txt). Changes: the patches 0001-0008 and 0010-0019 of the Vela
+upscale/assets/sgsr3/OptiScaler.dll   our fork of OptiScaler (Sloptiscaler f80e4da3, ARM64EC build; md5 3667e416...):
+                              GPL-3.0 (OptiScaler-GPL-3.0.txt). Changes: the patches 0001-0008 and 0010-0020 of the Vela
                               repository (fork/patches); upstream https://github.com/justradical/Sloptiscaler,
                               https://github.com/optiscaler/OptiScaler. Inside it: fakenvapi (MIT, fakenvapi-MIT.txt),
                               LatencyFleX (Apache-2.0, LatencyFleX-Apache-2.0.txt), Snapdragon Game Super Resolution

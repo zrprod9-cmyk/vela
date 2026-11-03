@@ -284,14 +284,40 @@ _APPINFO_MAGICS = (0x07564427, 0x07564428, 0x07564429)
 _appinfo_cache = {}
 
 
+def _appinfo_paths(home, roots=None):
+    roots = roots or [os.path.join(home, ".local/share/Steam"), os.path.join(home, ".steam/steam")]
+    return [os.path.join(root, "appcache", "appinfo.vdf") for root in roots]
+
+
+def _appinfo_entry(path, want):
+    """(magic, the app's bytes, offset of the key string table or None) for appid want; None when the file has no such
+    app. File: magic u32, universe u32 (v29: + string table offset i64), then per app: appid u32, size u32, size bytes;
+    appid 0 ends the list. OSError goes to the caller."""
+    with open(path, "rb") as f:
+        head = f.read(8)
+        magic = int.from_bytes(head[:4], "little") if len(head) == 8 else 0
+        if magic not in _APPINFO_MAGICS:
+            return None
+        table = None
+        if magic == 0x07564429:
+            table = int.from_bytes(f.read(8), "little", signed=True)
+        while True:
+            h = f.read(8)
+            if len(h) < 8:
+                return None
+            a, size = int.from_bytes(h[:4], "little"), int.from_bytes(h[4:], "little")
+            if a == 0:
+                return None
+            if a == want:
+                return magic, f.read(size), table
+            f.seek(size, 1)
+
+
 def appinfo_api_args(home, appid, roots=None):
     """The API flags the game's own Steam launch entries pass ({"-dx11", "-dx12"}), read from Steam's appcache/appinfo.vdf
-    (binary: per app appid u32, size u32, then size bytes; the entry's strings are inline in any version). Empty: none or
-    not readable. Cached per (file, mtime)."""
-    roots = roots or [os.path.join(home, ".local/share/Steam"), os.path.join(home, ".steam/steam")]
+    (the entry's strings are inline in any version). Empty: none or not readable. Cached per (file, mtime)."""
     want = int(appid) if str(appid).isdigit() else -1
-    for root in roots:
-        path = os.path.join(root, "appcache", "appinfo.vdf")
+    for path in _appinfo_paths(home, roots):
         try:
             mt = os.stat(path).st_mtime
         except OSError:
@@ -301,28 +327,110 @@ def appinfo_api_args(home, appid, roots=None):
             return set(_appinfo_cache[key])
         found = set()
         try:
-            with open(path, "rb") as f:
-                head = f.read(8)
-                magic = int.from_bytes(head[:4], "little") if len(head) == 8 else 0
-                if magic in _APPINFO_MAGICS:
-                    if magic == 0x07564429:
-                        f.read(8)  # v29: offset of the key string table
-                    while True:
-                        h = f.read(8)
-                        if len(h) < 8:
-                            break
-                        a, size = int.from_bytes(h[:4], "little"), int.from_bytes(h[4:], "little")
-                        if a == 0:
-                            break
-                        if a == want:
-                            found = {"-" + m.group(1).lower().decode() for m in _RX_API_ARG.finditer(f.read(size))}
-                            break
-                        f.seek(size, 1)
+            hit = _appinfo_entry(path, want)
+            if hit:
+                found = {"-" + m.group(1).lower().decode() for m in _RX_API_ARG.finditer(hit[1])}
         except OSError:
             found = set()
         _appinfo_cache[key] = set(found)
         return found
     return set()
+
+
+# 0.8.19: what Steam itself records about a game's anti-cheat, from the same appinfo.vdf. Read on two real files (an
+# armadaOS console's and a Windows PC's, Steam of 2026-11, about 500 apps each):
+#   extended/anti_cheat_support_url        the anti-cheat's ban / support page (EasyAntiCheat games: www.easy.ac/...)
+#   */steam_deck_compatibility/.../token   Valve's review result "#SteamDeckVerified_TestResult_UnsupportedAntiCheat..."
+#   config/launch/<n>/executable           the anti-cheat's own launcher (EAAntiCheat.GameServiceLauncher.exe, ...)
+APPINFO_HEADER = 60  # per app before the key-values: infostate, last updated, PICS token, SHA-1, change number, SHA-1
+ANTICHEAT_GENERIC = "anti-cheat"
+_anticheat_cache = {}
+
+
+def _appinfo_strings(blob, magic, path, table_off):
+    """[(lower-case key path, value)] of the string values in one app's binary key-values. v29 keys are indexes into the
+    string table at table_off; v28 keys are inline. Anything malformed ends the walk (what was read so far is kept)."""
+    table = None
+    if magic == 0x07564429:
+        with open(path, "rb") as f:
+            f.seek(table_off)
+            data = f.read()
+        count = int.from_bytes(data[:4], "little")
+        table = data[4:].split(b"\0")[:count]
+    out, stack, p, b = [], [], APPINFO_HEADER, blob
+    try:
+        while p < len(b):
+            t = b[p]
+            p += 1
+            if t == 8:
+                if not stack:
+                    break
+                stack.pop()
+                continue
+            if table is not None:
+                key = table[int.from_bytes(b[p:p + 4], "little", signed=True)]
+                p += 4
+            else:
+                e = b.index(b"\0", p)
+                key, p = b[p:e], e + 1
+            key = key.decode("utf-8", "replace").lower()
+            if t == 0:
+                stack.append(key)
+            elif t == 1:
+                e = b.index(b"\0", p)
+                out.append(("/".join(stack + [key]), b[p:e].decode("utf-8", "replace")))
+                p = e + 1
+            elif t in (2, 3):
+                p += 4
+            elif t in (7, 10):
+                p += 8
+            else:
+                break
+    except (IndexError, ValueError):
+        pass
+    return out
+
+
+def appinfo_anticheat(home, appid, roots=None):
+    """The anti-cheat Steam's appinfo.vdf names for the game: a set of labels ("EasyAntiCheat", "EA AntiCheat", ...,
+    or ANTICHEAT_GENERIC when Steam does not say which). Empty: none, or the file is not readable. Cached per (file,
+    mtime)."""
+    want = int(appid) if str(appid).isdigit() else -1
+    for path in _appinfo_paths(home, roots):
+        try:
+            mt = os.stat(path).st_mtime
+        except OSError:
+            continue
+        key = (path, mt, want)
+        if key in _anticheat_cache:
+            return set(_anticheat_cache[key])
+        found = set()
+        try:
+            hit = _appinfo_entry(path, want)
+            kvs = _appinfo_strings(hit[1], hit[0], path, hit[2]) if hit else []
+        except (OSError, ValueError):
+            kvs = []
+        for k, v in kvs:
+            low = v.lower()
+            if k.endswith("extended/anti_cheat_support_url") and low.strip():
+                found.add("EasyAntiCheat" if "easy.ac/" in low else ANTICHEAT_GENERIC)
+            elif "_compatibility/" in k and k.endswith("/token") and "_testresult_unsupportedanticheat" in low:
+                found.add(ANTICHEAT_GENERIC)
+            elif "/launch/" in k and k.endswith("/executable"):
+                name = low.replace("\\", "/").rsplit("/", 1)[-1]
+                found |= {label for m, label in ANTICHEAT_MARKERS.items() if m in name}
+        _anticheat_cache[key] = set(found)
+        return found
+    return set()
+
+
+def anticheat_labels(found, from_steam=()):
+    """scan()["anticheat"]: the anti-cheat found in the game folder and in Steam's appinfo (a named one replaces the
+    generic label). At most 4."""
+    out = sorted(set(found) | set(from_steam))
+    if len(out) > 1 and ANTICHEAT_GENERIC in out:
+        out.remove(ANTICHEAT_GENERIC)
+    return out[:4]
 
 
 def has_dx12_entry(args):
@@ -360,7 +468,10 @@ INPUT_LIBS = {
 ANTICHEAT_MARKERS = {"easyanticheat": "EasyAntiCheat", "start_protected_game": "EasyAntiCheat",
                      "eac_launcher": "EasyAntiCheat", "battleye": "BattlEye", "beservice": "BattlEye",
                      "xigncode": "XIGNCODE", "nprotect": "nProtect", "vanguard": "Vanguard", "equ8": "EQU8",
-                     "anticheatexpert": "ACE", "ace-base": "ACE"}
+                     "anticheatexpert": "ACE", "ace-base": "ACE",
+                     # EA AntiCheat: EAAntiCheat.GameServiceLauncher.exe / EAAntiCheat.Installer.exe (in Apex Legends'
+                     # Steam launch entries)
+                     "eaanticheat": "EA AntiCheat"}
 # online games whose anti-cheat is not visible in the install folder (or only after an update)
 ANTICHEAT_APPIDS = {"393380": "Squad", "578080": "PUBG", "1172470": "Apex Legends", "252490": "Rust",
                     "359550": "Rainbow Six Siege", "230410": "Warframe", "1665460": "eFootball"}
@@ -878,6 +989,7 @@ class Sgsr3:
                "inputs": [], "anticheat": [ANTICHEAT_APPIDS[appid]] if appid in ANTICHEAT_APPIDS else []}
         if root:
             res.update(scan_dir(root, appid))
+        res["anticheat"] = anticheat_labels(res["anticheat"], appinfo_anticheat(self.home, appid))
         self.cache[appid] = (time.time(), res)
         return res
 

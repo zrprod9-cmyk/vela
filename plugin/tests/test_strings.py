@@ -49,7 +49,13 @@ for i in re.findall(r'\{"id": "(\w+)"', read(ROOT, "py_modules", "presets.py")):
     assert f"hint.{i}" in en, i
 # the English texts are the ones the panel had before the Russian language was removed: spot checks
 assert en["rp.button"] == "Report a problem" and en["off_title"] == "Off" and en["hint.chip_unknown"] == "unknown chip"
-assert len(en) == 105, len(en)  # incl. model.why.chip_no_fsr4
+assert len(en) == 125, len(en)  # incl. model.why.chip_no_fsr4 and the 20 update texts (up.*)
+# every reason py_modules/updater.py can give the panel has a text (network / github have their own wording)
+upd_src = read(ROOT, "py_modules", "updater.py")
+codes = set(re.findall(r'UpdateError\("(\w+)', upd_src)) | {"network", "github"}
+assert codes >= {"bad_answer", "no_zip", "no_checksum", "hash_mismatch", "bad_zip", "not_newer"}, codes
+for c in codes | {"no_decky", "other"}:
+    assert f"up.err.{c}" in en, c
 
 # ---- the menu hint: panel text = backend fallback
 for inputs, key, p in ((["FSR 2", "DLSS"], "menu.fsr_dlss", {"fsr": "FSR 2"}), (["FSR 3"], "menu.fsr", {"fsr": "FSR 3"}),

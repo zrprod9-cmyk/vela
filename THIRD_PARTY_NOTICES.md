@@ -7,7 +7,7 @@ Every file in the release zip, who wrote it and under which licence. Licence tex
 
 | zip path | md5 | what | origin | licence | source / notes |
 |---|---|---|---|---|---|
-| `upscale/assets/sgsr3/OptiScaler.dll` | 62622479730260ca83a4cde5a4ba1dcf | our OptiScaler fork, ARM64EC; installed into the game as `dxgi.dll` | OptiScaler (optiscaler/OptiScaler) via justradical/Sloptiscaler `f80e4da3` + our patches 0001–0008, 0010–0019 | **GPL-3.0** | `licenses/OptiScaler-GPL-3.0.txt`; corresponding source: `fork/` in this repository |
+| `upscale/assets/sgsr3/OptiScaler.dll` | 3667e416ac97748dd27431b00e31a4cc | our OptiScaler fork, ARM64EC; installed into the game as `dxgi.dll` | OptiScaler (optiscaler/OptiScaler) via justradical/Sloptiscaler `f80e4da3` + our patches 0001–0008, 0010–0020 | **GPL-3.0** | `licenses/OptiScaler-GPL-3.0.txt`; corresponding source: `fork/` in this repository |
 | — inside that DLL | | fakenvapi | fakenvapi (merged into OptiScaler) | MIT | `licenses/fakenvapi-MIT.txt` |
 | — inside that DLL | | LatencyFleX header / logic | Tatsuyuki Ishi | Apache-2.0 | `licenses/LatencyFleX-Apache-2.0.txt` |
 | — inside that DLL | | Snapdragon Game Super Resolution (SGSR 2) and our SGSR-derived kernels | Qualcomm | BSD-3-Clause | `licenses/SGSR-BSD-3-Clause-Qualcomm.txt` |

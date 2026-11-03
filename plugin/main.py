@@ -20,6 +20,7 @@ import npu  # noqa: E402
 import presets  # noqa: E402
 import report  # noqa: E402
 import sgsr3  # noqa: E402
+import updater  # noqa: E402
 import upscale  # noqa: E402
 
 ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
@@ -87,6 +88,9 @@ class Plugin:
                                    plugin_log_dir=getattr(decky, "DECKY_PLUGIN_LOG_DIR", None))
         # 0.8.9: what the game allows (gamecheck.py); 0.8.13: the model by hand, the window pick (presets.py)
         self.check = gamecheck.GameCheck(settings, log=decky.logger.info)
+        # the update check: GitHub's latest Vela release, once a day at most (py_modules/updater.py)
+        self.upd = updater.Updater(settings, os.path.dirname(os.path.abspath(__file__)), log=decky.logger.info,
+                                   ssl_context=report.ssl_context)
         # 0.8.15: the panel lost the window pick, the stretch, the render pick, the NPU toggle, the NPU mode and the advanced
         # section; the clocks they left go back to Vela's defaults once (no control for them any more)
         self._win_restart = set()  # games whose Steam window the panel put back to 1920x1080 while they ran
@@ -106,6 +110,7 @@ class Plugin:
         aio = asyncio.get_event_loop()
         self.loop = aio.create_task(self._reconcile_loop())
         self.cpu_loop = aio.create_task(self._cpuboost_loop())
+        self.update_loop = aio.create_task(self._update_loop())
         decky.logger.info("Vela ready")
 
     async def _reconcile_loop(self):
@@ -134,6 +139,16 @@ class Plugin:
                     await asyncio.to_thread(self.cfg.reconcile, running)
             except Exception:
                 decky.logger.exception("reconcile failed")
+
+    async def _update_loop(self):
+        # the automatic update check; Updater.check asks GitHub only when it is on and the last check is a day old
+        await asyncio.sleep(60)
+        while True:
+            try:
+                await asyncio.to_thread(self.upd.check)
+            except Exception:
+                decky.logger.exception("update check")
+            await asyncio.sleep(3600)
 
     async def _report_run_end(self, appid, kept):
         # 0.8.16: a run just ended (its log was kept): when it looks bad the panel asks once (opt-in, never sent alone)
@@ -166,7 +181,7 @@ class Plugin:
             self.cpu.set_mode(appid, "off", running)
 
     async def _unload(self):
-        for t in ("loop", "cpu_loop"):
+        for t in ("loop", "cpu_loop", "update_loop"):
             if getattr(self, t, None):
                 getattr(self, t).cancel()
         if getattr(self, "floor", None):
@@ -262,6 +277,23 @@ class Plugin:
 
     async def report_saved(self):
         return await self._run(self.rep.saved)
+
+    # ---- updates (py_modules/updater.py) ----
+
+    async def update_state(self, auto=True):
+        """The panel opens: the cached answer, after the automatic check when it is due (auto)."""
+        return await self._run(self.upd.check if auto else self.upd.state)
+
+    async def update_check(self):
+        """The panel's "Check now": ask GitHub at once, also when the automatic check is off."""
+        return await self._run(self.upd.check, True)
+
+    async def update_enable(self, on):
+        return await self._run(self.upd.set_enabled, bool(on))
+
+    async def update_prepare(self):
+        """The player pressed Update: the checked zip URL and its sha256 for Decky's install-from-URL."""
+        return await self._run(self.upd.prepare)
 
     # ---- 0.8.13: the model by hand ----
 

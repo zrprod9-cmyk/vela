@@ -16,3 +16,4 @@ d46c68ac251409ffc315c81e651d9f73 *0016-vela-fsr4-lite-any-size.patch
 f4cfa485c547367be82602020ebcceb7 *0017-vela-fsr4-depth-flip-heaps-sgsr2-fallback.patch
 3b98fa7274b089c9d5625afff1c8df6c *0018-vela-fsr4fast-model.patch
 02ab8bff21d9d34a9c439e6cae2afc48 *0019-vela-fsr4-mv-pass.patch
+1af1cc31f215ade51fb2e4f9eaa3a3ce *0020-vela-gpu-identify-no-deadlock.patch

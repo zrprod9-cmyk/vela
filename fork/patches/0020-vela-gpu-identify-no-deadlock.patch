@@ -1,0 +1,160 @@
+diff --git a/OptiScaler/Config.cpp b/OptiScaler/Config.cpp
+index 11e960c..88861d2 100644
+--- a/OptiScaler/Config.cpp
++++ b/OptiScaler/Config.cpp
+@@ -44,6 +44,12 @@ Config::Config()
+ {
+     absoluteFileName = Util::DllPath().parent_path() / fileName;
+     Reload(absoluteFileName);
++
++    if (const char* level = std::getenv("VELA_OPTI_LOGLEVEL");
++        level != nullptr && level[0] >= '0' && level[0] <= '6' && level[1] == '\0')
++    {
++        LogLevel.set_volatile_value(level[0] - '0');
++    }
+ }
+ 
+ bool Config::Reload(std::filesystem::path iniPath)
+diff --git a/OptiScaler/State.h b/OptiScaler/State.h
+index 8c37399..8bfd298 100644
+--- a/OptiScaler/State.h
++++ b/OptiScaler/State.h
+@@ -308,7 +308,7 @@ class State
+ 
+     // Vulkan stuff
+     bool vulkanCreatingSC = false;
+-    bool creatingD3DDevice = false;
++    inline static thread_local bool creatingD3DDevice = false;
+     bool vulkanSkipHooks = false;
+     VkInstance VulkanInstance = nullptr;
+ 
+diff --git a/OptiScaler/dllmain.cpp b/OptiScaler/dllmain.cpp
+index ab9eb24..4228009 100644
+--- a/OptiScaler/dllmain.cpp
++++ b/OptiScaler/dllmain.cpp
+@@ -2141,7 +2141,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
+         spdlog::info("---------------------------------------------");
+         spdlog::info("");
+ 
+-        CreateThread(nullptr, 0, getGpuInfo, GetDllNameWModule(&dx12NamesW), 0, nullptr);
++        if (const char* gpuThread = std::getenv("VELA_OPTI_GPUTHREAD"); gpuThread != nullptr && strcmp(gpuThread, "0") == 0)
++            spdlog::info("Early GPU identification disabled by VELA_OPTI_GPUTHREAD=0");
++        else
++            CreateThread(nullptr, 0, getGpuInfo, GetDllNameWModule(&dx12NamesW), 0, nullptr);
+ 
+ #ifndef _DEBUG
+         if (Config::Instance()->LogLevel.value_or_default() == 0 && Config::Instance()->LogToFile.value_or_default())
+diff --git a/OptiScaler/misc/IdentifyGpu.cpp b/OptiScaler/misc/IdentifyGpu.cpp
+index 33de3b4..c29ab80 100644
+--- a/OptiScaler/misc/IdentifyGpu.cpp
++++ b/OptiScaler/misc/IdentifyGpu.cpp
+@@ -355,19 +355,43 @@ std::vector<GpuInformation> IdentifyGpu::getAllGpus()
+     if (is_fetching)
+         return {};
+ 
+-    std::scoped_lock lock(mutex);
+-
+-    if (!cache.empty() && cache.front().deviceId != VendorId::Invalid)
+     {
+-        return cache;
++        std::unique_lock lock(mutex);
++
++        if (!cache.empty() && cache.front().vendorId != VendorId::Invalid)
++            return cache;
++
++        // checkGpuInfo calls into dxgi / vulkan, which can wait on locks held by the game's own device creation.
++        // Running it under our lock would make every other caller wait on that, so wait for it with a limit instead.
++        if (fetching)
++        {
++            if (!fetchDone.wait_for(lock, std::chrono::milliseconds(2000), [] { return !fetching; }))
++            {
++                LOG_WARN("GPU identification is still running, continuing without GPU info");
++                return {};
++            }
++
++            if (!cache.empty() && cache.front().vendorId != VendorId::Invalid)
++                return cache;
++        }
++
++        fetching = true;
+     }
+ 
+     is_fetching = true;
+-    cache = checkGpuInfo();
++    auto gpus = checkGpuInfo();
+     is_fetching = false;
+ 
++    {
++        std::scoped_lock lock(mutex);
++        cache = gpus;
++        fetching = false;
++    }
++
++    fetchDone.notify_all();
++
+     // TODO: try to reactivate DxgiSpoofing if was auto on Nvidia cards without DLSS
+-    return cache;
++    return gpus;
+ }
+ 
+ GpuInformation IdentifyGpu::getPrimaryGpu()
+@@ -376,6 +400,16 @@ GpuInformation IdentifyGpu::getPrimaryGpu()
+     return !allGpus.empty() ? allGpus.front() : GpuInformation {};
+ }
+ 
++GpuInformation IdentifyGpu::tryGetPrimaryGpu()
++{
++    std::unique_lock lock(mutex, std::try_to_lock);
++
++    if (!lock.owns_lock() || cache.empty())
++        return GpuInformation {};
++
++    return cache.front();
++}
++
+ void IdentifyGpu::updateD3d12Capabilities(D3d12Proxy::PFN_D3D12CreateDevice o_D3D12CreateDevice)
+ {
+     if (hasD3d12Capabilities)
+diff --git a/OptiScaler/misc/IdentifyGpu.h b/OptiScaler/misc/IdentifyGpu.h
+index 7ba999e..ea09aad 100644
+--- a/OptiScaler/misc/IdentifyGpu.h
++++ b/OptiScaler/misc/IdentifyGpu.h
+@@ -1,5 +1,6 @@
+ #pragma once
+ #include <algorithm>
++#include <condition_variable>
+ #include <cctype>
+ #include <string_view>
+ 
+@@ -109,6 +110,8 @@ class IdentifyGpu
+ {
+     inline static bool hasD3d12Capabilities = false;
+     inline static std::mutex mutex {};
++    inline static std::condition_variable fetchDone {};
++    inline static bool fetching = false;
+     inline static std::vector<GpuInformation> cache {};
+ 
+     static std::vector<GpuInformation> checkGpuInfo();
+@@ -121,6 +124,8 @@ class IdentifyGpu
+     // Sorted by priority, the first one should be treated as the primary one
+     static std::vector<GpuInformation> getAllGpus();
+     static GpuInformation getPrimaryGpu();
++    // Cached primary GPU or an empty one, never waits for the identification
++    static GpuInformation tryGetPrimaryGpu();
+     static void updateD3d12Capabilities(D3d12Proxy::PFN_D3D12CreateDevice o_D3D12CreateDevice = nullptr);
+     static void updateInt8Support(std::optional<bool>& sdkSupportsInt8, std::optional<bool>& amdxcffx64SupportsInt8);
+ };
+diff --git a/OptiScaler/spoofing/Vulkan_Spoofing.cpp b/OptiScaler/spoofing/Vulkan_Spoofing.cpp
+index 9f0cc73..30c40c1 100644
+--- a/OptiScaler/spoofing/Vulkan_Spoofing.cpp
++++ b/OptiScaler/spoofing/Vulkan_Spoofing.cpp
+@@ -290,7 +290,8 @@ VkResult VulkanSpoofing::hkvkCreateInstance(VkInstanceCreateInfo* pCreateInfo, c
+         newExtensionList.push_back(pCreateInfo->ppEnabledExtensionNames[i]);
+     }
+ 
+-    auto primaryGpu = IdentifyGpu::getPrimaryGpu();
++    // Only needed for the NVNGX extensions, don't block the instance creation on the GPU identification
++    auto primaryGpu = IdentifyGpu::tryGetPrimaryGpu();
+ 
+     if (primaryGpu.dlssCapable && Config::Instance()->DLSSEnabled.value_or_default())
+     {

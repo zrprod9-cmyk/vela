@@ -4,8 +4,8 @@ Base: [justradical/Sloptiscaler](https://github.com/justradical/Sloptiscaler) co
 = ARM64EC build of [OptiScaler](https://github.com/optiscaler/OptiScaler) 10.0.0.1 with an SGSR 2 backend.
 Our changes are the patches in `patches/`, applied in number order. License: GPL-3.0 (`LICENSE`, OptiScaler's).
 
-The `OptiScaler.dll` in Vela 0.8.16 (md5 `62622479730260ca83a4cde5a4ba1dcf`, 18 445 312 bytes) was built from the base +
-**0001–0008 and 0010–0019** (patch 0009 and the experimental upstream-sync patch 0000 are not part of this build and are not
+The `OptiScaler.dll` in Vela 0.8.19 (md5 `3667e416ac97748dd27431b00e31a4cc`, 18 450 432 bytes) was built from the base +
+**0001–0008 and 0010–0020** (patch 0009 and the experimental upstream-sync patch 0000 are not part of this build and are not
 included). Checksums of the patch files: `patches.md5`.
 
 | patch | what |
@@ -19,6 +19,7 @@ included). Checksums of the patch files: `patches.md5`.
 | 0017 | FSR 4: depth flip, heaps, SGSR 2 fallback |
 | 0018 | model `fsr4fast` (FSR 4 Fast) |
 | 0019 | MV pass: converts display-size / jittered motion vectors (DLSS input) to the render-size, non-jittered vectors FSR 4 needs |
+| 0020 | GPU identification without a held lock: fixes the start hang on Snapdragon 8 Elite; `VELA_OPTI_GPUTHREAD=0` turns the early identification off, `VELA_OPTI_LOGLEVEL=<n>` sets the log level |
 
 ## Build
 
@@ -42,13 +43,13 @@ Pinned inputs:
 
 ### Reproducing the release DLL
 
-The `OptiScaler.dll` of Vela 0.8.16 (md5 `62622479730260ca83a4cde5a4ba1dcf`) is this build with
+The `OptiScaler.dll` of Vela 0.8.19 (md5 `3667e416ac97748dd27431b00e31a4cc`) is this build with
 
     FORK_BUILD_DATE=2026-11-02 sh fork/build/build.sh out
 
-A rebuild from a clean clone is byte-identical to the release DLL except four bytes: the linker's PE timestamp
-(file offset `0x80`, `0x81`: `TimeDateStamp` in the COFF header) and the timestamp of the debug directory entry
-(`0xE94404`, `0xE94405`). With those four bytes set to the release values the md5 is the same.
+A rebuild from a clean clone is byte-identical to the release DLL except two timestamps: the linker's PE timestamp
+(`TimeDateStamp` in the COFF header) and the timestamp of the debug directory entry. With those two fields set to the
+release values the md5 is the same.
 
 By hand: clone Sloptiscaler, `git checkout f80e4da3`, `git submodule update --init --recursive`, `git apply --ignore-whitespace`
 each patch in order, run `./arm64ec/build.sh <deps-dir>` from a checkout located at `/work/src`.

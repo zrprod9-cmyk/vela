@@ -69,7 +69,7 @@ if [ -n "$DT" ]; then
 fi
 case $CHIP in
   SM8550) say "  chip: SM8550 (Snapdragon 8 Gen 2), HTP v73 graphs";;
-  SM8750) say "  chip: SM8750 (Odin 3): not tested on a device yet. HTP v79 graphs (/usr/lib64/vela-npu/v79)"; WANT=$WANT_SM8750;;
+  SM8750) say "  chip: Snapdragon 8 Elite (SM8750): experimental. HTP v79 graphs (/usr/lib64/vela-npu/v79)"; WANT=$WANT_SM8750;;
 esac
 if [ "${VERSION_ID:-}" != 44 ] && [ $FORCE = 0 ]; then
   fail "the image is made for armadaOS VERSION_ID=44, this system has ${VERSION_ID:-?} (systemd-sysext would not load it). --force tries anyway"
@@ -163,7 +163,7 @@ for u in $UNITS; do s=${u#vela-npu@}; s=fsr4npud_${s%.service}; w=$(echo "$WANT"
 done
 if [ $bad = 0 ]; then
   say ""; say "Vela NPU: OK - 7 of 7 NPU daemons work. Start your game again; the Vela panel shows \"on the NPU\"."
-  [ "$CHIP" = SM8750 ] && say "SM8750 (Odin 3) is experimental: please report how it runs."
+  [ "$CHIP" = SM8750 ] && say "Snapdragon 8 Elite (SM8750) is experimental: please report how it runs."
   exit 0
 fi
 say ""; say "Vela NPU: FAILED - $bad of 7 NPU daemons do not work. Logs: journalctl -b -u 'vela-npu@*' -u vela-npu-listener"

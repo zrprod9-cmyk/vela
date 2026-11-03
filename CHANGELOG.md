@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.19 — 2026-11-03
+
+- **Fix for games hanging at start on Snapdragon 8 Elite devices** (AYN Odin 3, KONKR Pocket FIT Elite). If a game still
+  hangs on your device, please send a report.
+- **Updates from the panel.** Vela checks for a new version once a day, or when you press **Check now**, and updates with
+  one press. The daily check can be turned off.
+- Vela stays out of games with anti-cheat and says why in the panel.
+
 ## 0.8.18 — 2026-11-03
 
 - **Your launch options are safe.** Vela now adds and removes only its own launch arguments; whatever you had before, or add

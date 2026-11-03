@@ -47,7 +47,7 @@ It replaces a game's own upscaler (DLSS, FSR 2/3 or XeSS) with **FSR 4**, which 
 |---|---|---|
 | Retroid Pocket 6 | Snapdragon 8 Gen 2 | ✅ everything, FSR 4 on the NPU |
 | AYN Odin 2 / Odin 2 Mini / Odin 2 Portal / Thor | Snapdragon 8 Gen 2 | ✅ same chip as the Retroid Pocket 6 |
-| AYN Odin 3 | Snapdragon 8 Elite | 🧪 FSR 4 on the NPU, experimental |
+| AYN Odin 3 and other Snapdragon 8 Elite devices | Snapdragon 8 Elite | 🧪 FSR 4 on the NPU, experimental |
 | Retroid Pocket 5 / Retroid Pocket Mini | Snapdragon 865 | FSR 3 and SGSR 2 (no FSR 4) |
 
 You need **armadaOS** with **Decky Loader**, and a game that offers **DLSS, FSR 2/3 or XeSS** in its settings.
@@ -83,7 +83,8 @@ It asks for your password once and ends with `Vela NPU: OK`. Without it, FSR 4 r
 <details>
 <summary><b>Update and removal</b></summary>
 
-- **Update:** install the new zip the same way.
+- **Update:** when there is a new version, the Vela panel shows it (Vela checks once a day, or press **Check now**). Press
+  **Update** and confirm in Decky. Installing the new zip the same way also works.
 - **Take Vela out of a game:** Vela panel → **Off**. The game's own files come back.
 - **Remove the plugin:** set every game to **Off** first, then uninstall Vela in Decky.
 
@@ -92,7 +93,8 @@ It asks for your password once and ends with `Vela NPU: OK`. Without it, FSR 4 r
 ## Usage
 
 1. Select the game in the Steam library and open Quick Access → **Vela**.
-2. **Pick a model.** If the game is running, restart it once.
+2. **Pick a model.** The first time you turn Vela on for a running game, restart the game once; after that the model
+   switches while you play.
 3. **In the game's settings, choose the upscaler** the panel names (for example "choose FSR 3.1 or DLSS"). For Control,
    Resident Evil 4 and Deep Rock Galactic Vela does this for you.
 4. If Steam asks DX11 or DX12, choose **DX12**.
@@ -133,21 +135,21 @@ not an official AMD product.
 </details>
 
 <details>
-<summary><b>Does it work on the AYN Odin 3?</b></summary>
+<summary><b>Does it work on the AYN Odin 3 and other Snapdragon 8 Elite devices?</b></summary>
 
-Yes, experimentally: install the NPU part as above. We have not had an Odin 3 to try it on, so please send a report and tell us
+Yes, experimentally: install the NPU part as above. We have not had a Snapdragon 8 Elite device to try it on, so please send a report and tell us
 how it runs.
 </details>
 
 ## Known issues
 
 - Do not use the Decky **OptiScaler** plugin and Vela on the same game.
-- After switching the model while a game runs, restart the game.
 - Before uninstalling Vela, set your games to **Off**.
 
 ## Privacy
 
-Vela never sends anything on its own. **Report a problem** collects the run logs, Vela's settings for the game and the system
+Once a day Vela asks GitHub whether there is a new version; the request carries only Vela's version number, and you can
+turn it off in the panel. Apart from that, Vela never sends anything on its own. **Report a problem** collects the run logs, Vela's settings for the game and the system
 versions, removes your user and device names, IDs, addresses and anything that looks like a password, and shows you the files
 before sending. Reports go to the developers only and are used only to fix Vela. A copy stays in
 `~/homebrew/settings/upscale/reports`. To have a report deleted, send us its `VELA-…` number.

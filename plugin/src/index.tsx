@@ -1,10 +1,10 @@
 import { addEventListener, callable, definePlugin, removeEventListener, toaster, useQuickAccessVisible } from "@decky/api";
-import { DialogButton, Focusable, PanelSection, PanelSectionRow, Router, staticClasses, TextField } from "@decky/ui";
+import { DialogButton, Focusable, PanelSection, PanelSectionRow, Router, staticClasses, TextField, ToggleField } from "@decky/ui";
 import { useEffect, useState } from "react";
 import { LuScanEye } from "react-icons/lu";
 import {
   hintText, Key, menuHint, MODEL_IDS, MODEL_NAME, modelNote, ModelId, NAME, npuReason, reasonText, REPORT_REASONS, ReportReason,
-  reportWhy, t,
+  reportWhy, t, updateError,
 } from "./strings";
 
 // Vela 0.8.15: ONE screen — the game and what runs now, then FSR 4 / FSR 3 / SGSR 2 / Off, switched live
@@ -38,6 +38,10 @@ type ReportPanel = { configured: boolean; rate_left: number; auto_prompt: boolea
 type Preview = { id: string; files: { name: string; bytes: number }[]; zip_bytes: number; status: string;
   report_id: string | null; configured: boolean; rate_left: number; path: string; why: string[] };
 type Switched = { launch_options: string | null; resolution?: string | null };
+// py_modules/updater.py
+type UpdateState = { enabled: boolean; current: string; latest: string | null; available: boolean; checked_at: number | null;
+  error: string | null };
+type Install = { url: string; name: string; version: string; hash: string; install_type: number };
 
 function wrap<A extends any[], T>(name: string) {
   const fn = callable<A, Res<T>>(name);
@@ -56,6 +60,10 @@ const api = {
   reportPrepare: wrap<[appid: string, reason: string, text: string, launch: string | null, name: string, log: string | null], Preview>("report_prepare"),
   reportSend: wrap<[id: string], { report_id: string }>("report_send"),
   reportDismiss: wrap<[key: string, never: boolean], ReportPanel>("report_dismiss"),
+  updateState: wrap<[auto: boolean], UpdateState>("update_state"),
+  updateCheck: wrap<[], UpdateState>("update_check"),
+  updateEnable: wrap<[on: boolean], UpdateState>("update_enable"),
+  updatePrepare: wrap<[], Install>("update_prepare"),
 };
 
 // one-time fixes of a game set up by an older Vela, once per game while the plugin is loaded
@@ -285,8 +293,115 @@ function ReportBox({ game, rp, onDone }: { game: { appid: string; name: string }
   </>);
 }
 
+// ---- updates: a newer release on GitHub -> «Vela X.Y.Z is available» + Update; Decky installs it after its own confirm ----
+type Updates = ReturnType<typeof useUpdates>;
+function useUpdates(visible: boolean) {
+  const [st, setSt] = useState<UpdateState | null>(null);
+  // the in-place answer of «Check now»: null until pressed in this panel
+  const [manual, setManual] = useState<"checking" | "done" | null>(null);
+  const [phase, setPhase] = useState<"idle" | "preparing" | "confirm">("idle");
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    if (!visible) return;
+    api.updateState(true).then(setSt).catch(() => undefined);
+  }, [visible]);
+  const checkNow = async () => {
+    setManual("checking"); setMsg(null);
+    try {
+      setSt(await api.updateCheck());
+    } catch (e: any) {
+      setMsg(updateError(e?.message ?? String(e)));
+    }
+    setManual("done");
+  };
+  const enable = async (on: boolean) => {
+    try { setSt(await api.updateEnable(on)); } catch { /* the switch shows the stored value on the next open */ }
+  };
+  const install = async () => {
+    if (phase === "preparing") return;
+    setPhase("preparing"); setMsg(null);
+    try {
+      const p = await api.updatePrepare();
+      // Decky's own install-from-URL: it shows its confirm window, checks the sha256, replaces and reloads Vela
+      const backend = (window as any).DeckyBackend;
+      if (!backend?.call) throw new Error("no_decky");
+      await backend.call("utilities/install_plugin", p.url, p.name, p.version, p.hash, p.install_type);
+      setPhase("confirm");
+    } catch (e: any) {
+      setMsg(updateError(e?.message ?? String(e))); setPhase("idle");
+    }
+  };
+  return { st, manual, phase, msg, checkNow, enable, install };
+}
+
+function UpdateButton({ up }: { up: Updates }) {
+  return (
+    <DialogButton disabled={up.phase === "preparing"} onClick={up.install}
+      style={{ minWidth: 0, padding: "4px 14px", fontSize: 13, width: "auto", flexShrink: 0 }}>
+      {up.phase === "preparing" ? t("up.preparing") : t("up.update")}
+    </DialogButton>
+  );
+}
+function UpdateOffer({ up }: { up: Updates }) {
+  return (<>
+    <Focusable style={{ display: "flex", alignItems: "center", gap: 8 }} flow-children="horizontal">
+      <div style={{ fontSize: 13, fontWeight: 600, flexGrow: 1 }}>{t("up.available", { v: up.st?.latest ?? "" })}</div>
+      <UpdateButton up={up} />
+    </Focusable>
+    {up.phase === "confirm" && <div style={LINE}>{t("up.confirm")}</div>}
+    {up.msg && <div style={LINE}>{up.msg}</div>}
+  </>);
+}
+// the line at the top, after the automatic check found a newer version
+function UpdateLine({ up }: { up: Updates }) {
+  if (!up.st?.available || !up.st.enabled || up.manual) return null;
+  return (
+    <PanelSection>
+      <PanelSectionRow>
+        <div style={{ borderRadius: 6, padding: "8px 12px", background: "rgba(26,159,255,0.14)" }}><UpdateOffer up={up} /></div>
+      </PanelSectionRow>
+    </PanelSection>
+  );
+}
+// the switch and «Check now» at the bottom; the manual answer shows here
+function UpdateSection({ up }: { up: Updates }) {
+  const st = up.st;
+  let result: any = null;
+  if (up.manual === "checking") result = <div style={SMALL}>{t("up.checking")}</div>;
+  else if (up.manual === "done") {
+    const err = st?.error ? updateError(st.error) : null;
+    result = (<>
+      {err && <div style={SMALL}>{err}</div>}
+      {st?.available ? <UpdateOffer up={up} /> : !err && !up.msg && <div style={SMALL}>{t("up.latest", { v: st?.current ?? "" })}</div>}
+      {!st?.available && up.msg && <div style={SMALL}>{up.msg}</div>}
+    </>);
+  }
+  return (
+    <PanelSection title={t("up.title")}>
+      <PanelSectionRow>
+        <ToggleField label={t("up.auto")} description={t("up.autoDesc")} checked={st?.enabled ?? true} disabled={!st}
+          onChange={(on: boolean) => up.enable(on)} />
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <DialogButton disabled={up.manual === "checking"} onClick={up.checkNow}
+          style={{ padding: "6px 12px", fontSize: 13 }}>{up.manual === "checking" ? t("up.checking") : t("up.checkNow")}</DialogButton>
+      </PanelSectionRow>
+      {result && <PanelSectionRow>{result}</PanelSectionRow>}
+    </PanelSection>
+  );
+}
+
 function Content() {
   const visible = useQuickAccessVisible();
+  const up = useUpdates(visible);
+  return (<>
+    <UpdateLine up={up} />
+    <GameContent visible={visible} />
+    <UpdateSection up={up} />
+  </>);
+}
+
+function GameContent({ visible }: { visible: boolean }) {
   const [game, setGame] = useState(currentApp());
   const [res, setRes] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
