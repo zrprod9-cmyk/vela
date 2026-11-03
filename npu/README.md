@@ -1,7 +1,7 @@
 # Vela NPU system part (package 13)
 
-It lets Vela run FSR 4 and FSR 4 Fast on the Hexagon NPU of the Snapdragon 8 Gen 2 (SM8550, HTP v73) and, experimental and
-experimental, of the Snapdragon 8 Elite (SM8750, HTP v79, AYN Odin 3). Without it Vela runs them on the GPU. It is a system part, so installing it needs **sudo once** (your password).
+It lets Vela run FSR 4 and FSR 4 Fast on the Hexagon NPU of the Snapdragon 8 Gen 2 (SM8550, HTP v73) and, experimentally,
+of the Snapdragon 8 Elite (SM8750, HTP v79, AYN Odin 3). Without it Vela runs them on the GPU. It is a system part, so installing it needs **sudo once** (your password).
 
 ## Install (Desktop mode → Konsole, game closed)
 
