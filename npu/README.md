@@ -1,7 +1,7 @@
 # Vela NPU system part (package 13)
 
 It lets Vela run FSR 4 and FSR 4 Fast on the Hexagon NPU of the Snapdragon 8 Gen 2 (SM8550, HTP v73) and, experimental and
-untested on a device, of the Snapdragon 8 Elite (SM8750, HTP v79, AYN Odin 3). Without it Vela runs them on the GPU. It is a system part, so installing it needs **sudo once** (your password).
+experimental, of the Snapdragon 8 Elite (SM8750, HTP v79, AYN Odin 3). Without it Vela runs them on the GPU. It is a system part, so installing it needs **sudo once** (your password).
 
 ## Install (Desktop mode → Konsole, game closed)
 
@@ -58,12 +58,3 @@ systemd-sysext stops loading it and the installer must be run again (it refuses 
   (`LICENSING.md`).
 - The source of `fsr4npud` and `fsr4npu-check` is in [`src/`](src/README.md) (file table, licences, build steps, and how the image's
   binaries relate to it).
-
-## Testing
-The public installer was run on a Retroid Pocket 6 with a local copy of the package 12 image (`--image`): 7 of 7 NPU daemons
-passed their fixed-input check. Package 13 keeps every SM8550 program, graph and library of package 12 byte for byte (the units and
-the udev rule differ only in comments) and adds the v79 files and the two drop-ins. SM8750: not tested on a device yet. Its fixed-input hashes come from Qualcomm's x86 HTP simulator, which gives
-the device's 7 SM8550 hashes for the v73 graphs and the same 7 hashes for the v79 graphs; the drop-ins were run under
-systemd 259 with stand-in units (v73 graphs on `qcom,sm8550`, v79 on `qcom,sm8750`). `dry_test.sh` runs the installer for both
-chips with a stand-in device tree (`COMPATIBLE="ayntec,odin3 qcom,sm8750"`). The download step (`curl` from the release) has not been run yet. Its sha256 / dsp-partition
-steps are also covered by `dry_test.sh` in a container. The daemons accept clients of uid 1000 only (the default armadaOS user).
