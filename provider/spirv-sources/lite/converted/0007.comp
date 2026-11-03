@@ -1,0 +1,468 @@
+#version 450
+#if defined(GL_EXT_control_flow_attributes)
+#extension GL_EXT_control_flow_attributes : require
+#define SPIRV_CROSS_FLATTEN [[flatten]]
+#define SPIRV_CROSS_BRANCH [[dont_flatten]]
+#define SPIRV_CROSS_UNROLL [[unroll]]
+#define SPIRV_CROSS_LOOP [[dont_unroll]]
+#else
+#define SPIRV_CROSS_FLATTEN
+#define SPIRV_CROSS_BRANCH
+#define SPIRV_CROSS_UNROLL
+#define SPIRV_CROSS_LOOP
+#endif
+#extension GL_EXT_spirv_intrinsics : require
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 141, std430) buffer type_RWByteAddressBuffer
+{
+    uint _m0[];
+} ScratchBuffer;
+
+layout(set = 0, binding = 21, std430) readonly buffer type_ByteAddressBuffer
+{
+    uint _m0[];
+} InitializerBuffer;
+
+layout(set = 0, binding = 256, std140) uniform type_CsTensorSizes
+{
+    uvec4 tensorSizes[9];
+} CsTensorSizes;
+
+spirv_instruction (extensions = ["SPV_KHR_integer_dot_product"], capabilities = [6019, 6018], id = 4450)
+int spvSDot_int_uint_uint(uint arg0, uint arg1, spirv_literal uint packedFormat);
+
+void main()
+{
+    do
+    {
+        ivec3 _147 = ivec3(gl_GlobalInvocationID * uvec3(1u, 1u, 32u));
+        uvec2 _149 = uvec2(_147.xy);
+        if (any(greaterThanEqual(_149, uvec2(480u, 270u))))
+        {
+            break;
+        }
+        int _154 = _147.x;
+        ivec3 _156 = ivec3(_154, _147.y, 0);
+        ivec3 _159 = ivec3(uvec3(_156) - uvec3(1u, 1u, 0u));
+        int _162 = int(gl_WorkGroupID.z);
+        uint _164;
+        _164 = 0u;
+        int _130[1][1][8];
+        ivec4 _131[1][1][1];
+        ivec2 _133[4];
+        for (; _164 < uint(4 + _162); _164++)
+        {
+            uint _179 = ((4u * uint(_147.z + (int(_164) * 4))) + 16256u) >> 2u;
+            _131[0u][0u][0u] = ivec4(uvec4(InitializerBuffer._m0[_179], InitializerBuffer._m0[_179 + 1u], InitializerBuffer._m0[_179 + 2u], InitializerBuffer._m0[_179 + 3u]));
+            uint _195;
+            _195 = 0u;
+            SPIRV_CROSS_UNROLL
+            for (; _195 < 3u; _195++)
+            {
+                uint _202;
+                _202 = 0u;
+                SPIRV_CROSS_UNROLL
+                for (; _202 < 1u; _202++)
+                {
+                    uint _209;
+                    _209 = 0u;
+                    SPIRV_CROSS_UNROLL
+                    for (; _209 < 3u; _209++)
+                    {
+                        uint _216;
+                        _216 = 0u;
+                        SPIRV_CROSS_UNROLL
+                        for (; _216 < 16u; _216 += 8u)
+                        {
+                            uint _223;
+                            _223 = 0u;
+                            SPIRV_CROSS_UNROLL
+                            for (; _223 < 1u; _223++)
+                            {
+                                uvec4 _240 = uvec4(ivec4((_159 + ivec3(uvec3(_209, _195, _216))) + (ivec3(uvec3(_223, _202, 0u)) * ivec3(1, 1, 4)), 0));
+                                uvec4 _242 = (_240 / uvec4(1u, 1u, 16u, 1u)) + uvec4(1u, 1u, 0u, 0u);
+                                uint _257 = (((((16u * _242.x) + (7712u * _242.y)) + (2097664u * _242.z)) + (4195328u * _242.w)) + (_240.z % 16u)) >> 2u;
+                                ivec2 _132 = ivec2(uvec2(ScratchBuffer._m0[_257], ScratchBuffer._m0[_257 + 1u]));
+                                for (int _266 = 0; _266 < 4; )
+                                {
+                                    uint _281 = (((((256u * _209) + (768u * _195)) + _216) + (16u * ((_164 * 4u) + uint(_266)))) + 13952u) >> 2u;
+                                    _133[_266] = ivec2(uvec2(InitializerBuffer._m0[_281], InitializerBuffer._m0[_281 + 1u]));
+                                    _266++;
+                                    continue;
+                                }
+                                int _291;
+                                _291 = 0;
+                                for (; _291 < 4; _291++)
+                                {
+                                    for (int _298 = 0; _298 < 2; )
+                                    {
+                                        uint _303 = uint(_298);
+                                        uint _310 = uint(_291);
+                                        _131[_223][_202][0][_310] = spvSDot_int_uint_uint(uint(_132[_303]), uint(_133[_291][_303]), 0) + _131[_223][_202][0][_310];
+                                        _298++;
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            uint _316;
+            _316 = 0u;
+            for (; _316 < 1u; _316++)
+            {
+                uint _323;
+                _323 = 0u;
+                for (; _323 < 1u; _323++)
+                {
+                    for (uint _330 = 0u; _330 < 1u; )
+                    {
+                        ivec4 _344 = ((_131[_316][_323][_330] + ivec4(127)) + ((_131[_316][_323][_330] >> ivec4(8)) & ivec4(1))) >> ivec4(8);
+                        _130[int(_316)][int(_323)][((_330 + _164) * 4u) / 4u] = int((((uint(clamp(_344.x, -128, 127)) & 255u) | ((uint(clamp(_344.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_344.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_344.w, -128, 127)) & 255u) << 24u));
+                        _330++;
+                        continue;
+                    }
+                }
+            }
+        }
+        uint _372;
+        _372 = 0u;
+        for (; _372 < 1u; _372++)
+        {
+            uint _379;
+            _379 = 0u;
+            for (; _379 < 1u; _379++)
+            {
+                for (uint _386 = 4u; _386 < 8u; )
+                {
+                    int _391 = int(_372);
+                    int _392 = int(_379);
+                    int _393 = int(_386);
+                    uvec4 _401 = uvec4(ivec4(_156 + (ivec3(_391, _392, _393) * ivec3(1, 1, 4)), 0));
+                    uvec4 _403 = (_401 / uvec4(1u, 1u, 16u, 1u)) + uvec4(1u, 1u, 0u, 0u);
+                    _130[_391][_392][_393] = int(ScratchBuffer._m0[(((((16u * _403.x) + (7712u * _403.y)) + (2097664u * _403.z)) + (4195328u * _403.w)) + (_401.z % 16u)) >> 2u]);
+                    _386++;
+                    continue;
+                }
+            }
+        }
+        uint _424;
+        _424 = 0u;
+        int _129[1][1][16];
+        ivec4 _134[1][1][1];
+        ivec2 _136[4];
+        for (; _424 < uint(16 + _162); _424++)
+        {
+            uint _439 = ((4u * uint(_147.z + (int(_424) * 4))) + 18432u) >> 2u;
+            _134[0u][0u][0u] = ivec4(uvec4(InitializerBuffer._m0[_439], InitializerBuffer._m0[_439 + 1u], InitializerBuffer._m0[_439 + 2u], InitializerBuffer._m0[_439 + 3u]));
+            uint _455;
+            _455 = 0u;
+            SPIRV_CROSS_UNROLL
+            for (; _455 < 1u; _455++)
+            {
+                uint _462;
+                _462 = 0u;
+                SPIRV_CROSS_UNROLL
+                for (; _462 < 1u; _462++)
+                {
+                    uint _469;
+                    _469 = 0u;
+                    SPIRV_CROSS_UNROLL
+                    for (; _469 < 1u; _469++)
+                    {
+                        uint _476;
+                        _476 = 0u;
+                        SPIRV_CROSS_UNROLL
+                        for (; _476 < 32u; _476 += 8u)
+                        {
+                            uint _483;
+                            _483 = 0u;
+                            SPIRV_CROSS_UNROLL
+                            for (; _483 < 1u; _483++)
+                            {
+                                ivec3 _492 = ivec3(uvec3(_483, _462, 0u));
+                                int _496 = int(uint(ivec3(uvec3(_469, _455, _476)).z) / 4u);
+                                int _497 = _492.x;
+                                int _498 = _492.y;
+                                ivec2 _135 = ivec2(_130[_497][_498][_496], _130[_497][_498][_496 + 1]);
+                                for (int _506 = 0; _506 < 4; )
+                                {
+                                    uint _520 = ((((2048u * (_469 + _455)) + _476) + (32u * ((_424 * 4u) + uint(_506)))) + 16384u) >> 2u;
+                                    _136[_506] = ivec2(uvec2(InitializerBuffer._m0[_520], InitializerBuffer._m0[_520 + 1u]));
+                                    _506++;
+                                    continue;
+                                }
+                                int _530;
+                                _530 = 0;
+                                for (; _530 < 4; _530++)
+                                {
+                                    for (int _537 = 0; _537 < 2; )
+                                    {
+                                        uint _542 = uint(_537);
+                                        uint _549 = uint(_530);
+                                        _134[_483][_462][0][_549] = spvSDot_int_uint_uint(uint(_135[_542]), uint(_136[_530][_542]), 0) + _134[_483][_462][0][_549];
+                                        _537++;
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            uint _555;
+            _555 = 0u;
+            for (; _555 < 1u; _555++)
+            {
+                uint _562;
+                _562 = 0u;
+                for (; _562 < 1u; _562++)
+                {
+                    for (uint _569 = 0u; _569 < 1u; )
+                    {
+                        _134[_555][_562][_569] = max(_134[_555][_562][_569], ivec4(0));
+                        ivec4 _585 = ((_134[_555][_562][_569] + ivec4(63)) + ((_134[_555][_562][_569] >> ivec4(7)) & ivec4(1))) >> ivec4(7);
+                        _129[int(_555)][int(_562)][((_569 + _424) * 4u) / 4u] = int((((uint(clamp(_585.x, -128, 127)) & 255u) | ((uint(clamp(_585.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_585.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_585.w, -128, 127)) & 255u) << 24u));
+                        _569++;
+                        continue;
+                    }
+                }
+            }
+        }
+        uint _613;
+        _613 = 0u;
+        for (; _613 < 1u; _613++)
+        {
+            uint _620;
+            _620 = 0u;
+            for (; _620 < 1u; _620++)
+            {
+                for (uint _627 = 0u; _627 < 4u; )
+                {
+                    int _632 = int(_613);
+                    int _633 = int(_620);
+                    int _634 = int(_627);
+                    uvec4 _642 = uvec4(ivec4(_156 + (ivec3(_632, _633, _634) * ivec3(1, 1, 4)), 0));
+                    uvec4 _644 = (_642 / uvec4(1u, 1u, 16u, 1u)) + uvec4(1u, 1u, 0u, 0u);
+                    _130[_632][_633][_634] = int(ScratchBuffer._m0[(((((16u * _644.x) + (7712u * _644.y)) + (2097664u * _644.z)) + (4195328u * _644.w)) + (_642.z % 16u)) >> 2u]);
+                    _627++;
+                    continue;
+                }
+            }
+        }
+        uint _665;
+        _665 = 0u;
+        int _128[1][1][8];
+        ivec4 _137[1][1][1];
+        ivec2 _139[4];
+        for (; _665 < uint(8 + _162); _665++)
+        {
+            int _674 = _147.z;
+            uint _680 = ((4u * uint(_674 + (int(_665) * 4))) + 20736u) >> 2u;
+            _137[0u][0u][0u] = ivec4(uvec4(InitializerBuffer._m0[_680], InitializerBuffer._m0[_680 + 1u], InitializerBuffer._m0[_680 + 2u], InitializerBuffer._m0[_680 + 3u]));
+            uint _696;
+            _696 = 0u;
+            SPIRV_CROSS_UNROLL
+            for (; _696 < 1u; _696++)
+            {
+                uint _703;
+                _703 = 0u;
+                SPIRV_CROSS_UNROLL
+                for (; _703 < 1u; _703++)
+                {
+                    uint _710;
+                    _710 = 0u;
+                    SPIRV_CROSS_UNROLL
+                    for (; _710 < 1u; _710++)
+                    {
+                        uint _717;
+                        _717 = 0u;
+                        SPIRV_CROSS_UNROLL
+                        for (; _717 < 64u; _717 += 8u)
+                        {
+                            uint _724;
+                            _724 = 0u;
+                            SPIRV_CROSS_UNROLL
+                            for (; _724 < 1u; _724++)
+                            {
+                                ivec3 _733 = ivec3(uvec3(_724, _703, 0u));
+                                int _737 = int(uint(ivec3(uvec3(_710, _696, _717)).z) / 4u);
+                                int _738 = _733.x;
+                                int _739 = _733.y;
+                                ivec2 _138 = ivec2(_129[_738][_739][_737], _129[_738][_739][_737 + 1]);
+                                for (int _747 = 0; _747 < 4; )
+                                {
+                                    uint _761 = ((((2048u * (_710 + _696)) + _717) + (64u * ((_665 * 4u) + uint(_747)))) + 18688u) >> 2u;
+                                    _139[_747] = ivec2(uvec2(InitializerBuffer._m0[_761], InitializerBuffer._m0[_761 + 1u]));
+                                    _747++;
+                                    continue;
+                                }
+                                int _771;
+                                _771 = 0;
+                                for (; _771 < 4; _771++)
+                                {
+                                    for (int _778 = 0; _778 < 2; )
+                                    {
+                                        uint _783 = uint(_778);
+                                        uint _790 = uint(_771);
+                                        _137[_724][_703][0][_790] = spvSDot_int_uint_uint(uint(_138[_783]), uint(_139[_771][_783]), 0) + _137[_724][_703][0][_790];
+                                        _778++;
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            uint _796;
+            _796 = 0u;
+            for (; _796 < 1u; _796++)
+            {
+                uint _803;
+                _803 = 0u;
+                for (; _803 < 1u; _803++)
+                {
+                    for (uint _810 = 0u; _810 < 1u; )
+                    {
+                        uint _817 = 4u * (_810 + _665);
+                        int _822 = int(_796);
+                        int _823 = int(_803);
+                        int _825 = int(_817 / 4u);
+                        uint _828 = uint(_130[_822][_823][_825]);
+                        ivec4 _848 = ivec4(roundEven(((vec4(ivec4(int(_828 << 24u) >> 24, int(_828 << 16u) >> 24, int(_828 << 8u) >> 24, _130[_822][_823][_825] >> 24)) * (((uint(_674) + _817) < 16u) ? 0.03125 : 0.0625)) + (vec4(_137[_796][_803][_810]) * 0.00048828125)) * 32.0));
+                        _128[_822][_823][_825] = int((((uint(clamp(_848.x, -128, 127)) & 255u) | ((uint(clamp(_848.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_848.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_848.w, -128, 127)) & 255u) << 24u));
+                        _810++;
+                        continue;
+                    }
+                }
+            }
+        }
+        if (any(greaterThanEqual(_149, CsTensorSizes.tensorSizes[4].xy)))
+        {
+            break;
+        }
+        ivec3 _884 = ivec3(uvec3(uint(_154), uint(_147.y), 0u) * uvec3(2u, 2u, 1u));
+        uint _886;
+        _886 = 0u;
+        ivec4 _140[1][1][4][1][1];
+        ivec2 _142[4];
+        uint _890;
+        for (;;)
+        {
+            _890 = uint(2 + _162);
+            bool _891 = _886 < _890;
+            if (_891)
+            {
+                uint _895;
+                _895 = 0u;
+                for (; _895 < _890; _895++)
+                {
+                    int _901 = _147.z;
+                    uint _905 = ((4u * uint(_901)) + 22912u) >> 2u;
+                    _140[0u][0u][0u][0u][0u] = ivec4(uvec4(InitializerBuffer._m0[_905], InitializerBuffer._m0[_905 + 1u], InitializerBuffer._m0[_905 + 2u], InitializerBuffer._m0[_905 + 3u]));
+                    uint _924 = ((4u * uint(_901 + 4)) + 22912u) >> 2u;
+                    _140[0u][0u][1u][0u][0u] = ivec4(uvec4(InitializerBuffer._m0[_924], InitializerBuffer._m0[_924 + 1u], InitializerBuffer._m0[_924 + 2u], InitializerBuffer._m0[_924 + 3u]));
+                    uint _943 = ((4u * uint(_901 + 8)) + 22912u) >> 2u;
+                    _140[0u][0u][2u][0u][0u] = ivec4(uvec4(InitializerBuffer._m0[_943], InitializerBuffer._m0[_943 + 1u], InitializerBuffer._m0[_943 + 2u], InitializerBuffer._m0[_943 + 3u]));
+                    uint _962 = ((4u * uint(_901 + 12)) + 22912u) >> 2u;
+                    _140[0u][0u][3u][0u][0u] = ivec4(uvec4(InitializerBuffer._m0[_962], InitializerBuffer._m0[_962 + 1u], InitializerBuffer._m0[_962 + 2u], InitializerBuffer._m0[_962 + 3u]));
+                    int _977 = int(_895);
+                    int _978 = int(_886);
+                    ivec3 _979 = ivec3(_977, _978, 0);
+                    ivec3 _980 = _884 + _979;
+                    uvec4 _986 = uvec4(ivec4(_980, 0)) + uvec4(1u, 1u, 0u, 0u);
+                    uint _998 = (((((16u * _986.x) + (15392u * _986.y)) + _986.z) + (8342464u * _986.w)) + 8342464u) >> 2u;
+                    uvec4 _1008 = uvec4(ivec4(_980 + ivec3(0, 0, 4), 0)) + uvec4(1u, 1u, 0u, 0u);
+                    uint _1020 = (((((16u * _1008.x) + (15392u * _1008.y)) + _1008.z) + (8342464u * _1008.w)) + 8342464u) >> 2u;
+                    uint _1022 = ScratchBuffer._m0[_1020];
+                    uvec4 _1030 = uvec4(ivec4(_980 + ivec3(0, 0, 8), 0)) + uvec4(1u, 1u, 0u, 0u);
+                    uint _1042 = (((((16u * _1030.x) + (15392u * _1030.y)) + _1030.z) + (8342464u * _1030.w)) + 8342464u) >> 2u;
+                    uint _1044 = ScratchBuffer._m0[_1042];
+                    uvec4 _1052 = uvec4(ivec4(_980 + ivec3(0, 0, 12), 0)) + uvec4(1u, 1u, 0u, 0u);
+                    uint _1064 = (((((16u * _1052.x) + (15392u * _1052.y)) + _1052.z) + (8342464u * _1052.w)) + 8342464u) >> 2u;
+                    uint _1066 = ScratchBuffer._m0[_1064];
+                    uint _1069;
+                    _1069 = 0u;
+                    SPIRV_CROSS_UNROLL
+                    for (; _1069 < 4u; _1069++)
+                    {
+                        uint _1076;
+                        _1076 = 0u;
+                        SPIRV_CROSS_UNROLL
+                        for (; _1076 < 1u; _1076++)
+                        {
+                            uint _1083;
+                            _1083 = 0u;
+                            SPIRV_CROSS_UNROLL
+                            for (; _1083 < 1u; _1083++)
+                            {
+                                uint _1090;
+                                _1090 = 0u;
+                                SPIRV_CROSS_UNROLL
+                                for (; _1090 < 32u; _1090 += 8u)
+                                {
+                                    ivec3 _1099 = ivec3(uvec3(_1083, _1076, 0u));
+                                    int _1103 = int(uint(ivec3(uvec3(0u, 0u, _1090)).z) / 4u);
+                                    int _1104 = _1099.x;
+                                    int _1105 = _1099.y;
+                                    ivec2 _141 = ivec2(_128[_1104][_1105][_1103], _128[_1104][_1105][_1103 + 1]);
+                                    for (int _1113 = 0; _1113 < 4; )
+                                    {
+                                        uint _1128 = (((((512u * _895) + (1024u * _886)) + (32u * ((_1069 * 4u) + uint(_1113)))) + _1090) + 20864u) >> 2u;
+                                        _142[_1113] = ivec2(uvec2(InitializerBuffer._m0[_1128], InitializerBuffer._m0[_1128 + 1u]));
+                                        _1113++;
+                                        continue;
+                                    }
+                                    int _1138;
+                                    _1138 = 0;
+                                    for (; _1138 < 4; _1138++)
+                                    {
+                                        for (int _1145 = 0; _1145 < 2; )
+                                        {
+                                            uint _1150 = uint(_1145);
+                                            uint _1157 = uint(_1138);
+                                            _140[_1083][_1076][_1069][0][0][_1157] = spvSDot_int_uint_uint(uint(_141[_1150]), uint(_142[_1138][_1150]), 0) + _140[_1083][_1076][_1069][0][0][_1157];
+                                            _1145++;
+                                            continue;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    ivec3 _1183 = _884 + (_979 * ivec3(1, 1, 4));
+                    bool _1187 = all(lessThan(uvec2(_1183.xy), uvec2(960u, 540u)));
+                    ivec4 _1189 = mix(ivec4(0), ivec4(roundEven(((vec4(ivec4(int(ScratchBuffer._m0[_998] << 24u) >> 24, int(ScratchBuffer._m0[_998] << 16u) >> 24, int(ScratchBuffer._m0[_998] << 8u) >> 24, int(ScratchBuffer._m0[_998]) >> 24)) * 0.03125) + (vec4(_140[0u][0u][0u][0u][0u]) * 0.0001220703125)) * 32.0)), bvec4(_1187));
+                    uvec4 _1217 = uvec4(ivec4(_1183, 0)) + uvec4(1u, 1u, 0u, 0u);
+                    ScratchBuffer._m0[uint((!_1187) ? 134217728 : int(((((16u * _1217.x) + (15392u * _1217.y)) + _1217.z) + (8342464u * _1217.w)) + 16684928u)) >> 2u] = (((uint(clamp(_1189.x, -128, 127)) & 255u) | ((uint(clamp(_1189.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_1189.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_1189.w, -128, 127)) & 255u) << 24u);
+                    ivec3 _1257 = _884 + (ivec3(_977, _978, 1) * ivec3(1, 1, 4));
+                    bool _1261 = all(lessThan(uvec2(_1257.xy), uvec2(960u, 540u)));
+                    ivec4 _1263 = mix(ivec4(0), ivec4(roundEven(((vec4(ivec4(int(_1022 << 24u) >> 24, int(_1022 << 16u) >> 24, int(_1022 << 8u) >> 24, int(_1022) >> 24)) * 0.03125) + (vec4(_140[0u][0u][1u][0u][0u]) * 0.0001220703125)) * 32.0)), bvec4(_1261));
+                    uvec4 _1291 = uvec4(ivec4(_1257, 0)) + uvec4(1u, 1u, 0u, 0u);
+                    ScratchBuffer._m0[uint((!_1261) ? 134217728 : int(((((16u * _1291.x) + (15392u * _1291.y)) + _1291.z) + (8342464u * _1291.w)) + 16684928u)) >> 2u] = (((uint(clamp(_1263.x, -128, 127)) & 255u) | ((uint(clamp(_1263.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_1263.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_1263.w, -128, 127)) & 255u) << 24u);
+                    ivec3 _1331 = _884 + (ivec3(_977, _978, 2) * ivec3(1, 1, 4));
+                    bool _1335 = all(lessThan(uvec2(_1331.xy), uvec2(960u, 540u)));
+                    ivec4 _1337 = mix(ivec4(0), ivec4(roundEven(((vec4(ivec4(int(_1044 << 24u) >> 24, int(_1044 << 16u) >> 24, int(_1044 << 8u) >> 24, int(_1044) >> 24)) * 0.03125) + (vec4(_140[0u][0u][2u][0u][0u]) * 0.0001220703125)) * 32.0)), bvec4(_1335));
+                    uvec4 _1365 = uvec4(ivec4(_1331, 0)) + uvec4(1u, 1u, 0u, 0u);
+                    ScratchBuffer._m0[uint((!_1335) ? 134217728 : int(((((16u * _1365.x) + (15392u * _1365.y)) + _1365.z) + (8342464u * _1365.w)) + 16684928u)) >> 2u] = (((uint(clamp(_1337.x, -128, 127)) & 255u) | ((uint(clamp(_1337.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_1337.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_1337.w, -128, 127)) & 255u) << 24u);
+                    ivec3 _1405 = _884 + (ivec3(_977, _978, 3) * ivec3(1, 1, 4));
+                    bool _1409 = all(lessThan(uvec2(_1405.xy), uvec2(960u, 540u)));
+                    ivec4 _1411 = mix(ivec4(0), ivec4(roundEven(((vec4(ivec4(int(_1066 << 24u) >> 24, int(_1066 << 16u) >> 24, int(_1066 << 8u) >> 24, int(_1066) >> 24)) * 0.03125) + (vec4(_140[0u][0u][3u][0u][0u]) * 0.0001220703125)) * 32.0)), bvec4(_1409));
+                    uvec4 _1439 = uvec4(ivec4(_1405, 0)) + uvec4(1u, 1u, 0u, 0u);
+                    ScratchBuffer._m0[uint((!_1409) ? 134217728 : int(((((16u * _1439.x) + (15392u * _1439.y)) + _1439.z) + (8342464u * _1439.w)) + 16684928u)) >> 2u] = (((uint(clamp(_1411.x, -128, 127)) & 255u) | ((uint(clamp(_1411.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_1411.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_1411.w, -128, 127)) & 255u) << 24u);
+                }
+                _886++;
+                continue;
+            }
+            else
+            {
+                break;
+            }
+        }
+        break;
+    } while(false);
+}
+

@@ -1,0 +1,23 @@
+diff --git a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
+index 182c710..3ccfac1 100644
+--- a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
++++ b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
+@@ -308,12 +308,14 @@ bool SGSR3FeatureDx12::CreatePipelines(ID3D12Device* device)
+         else if (lm == VelaLive::Model::Sr)
+             _fixedMode = Mode::V1Fast;
+         LOG_INFO("SGSR3: Vela live model {0}", VelaLive::ModelName(lm));
+-        // FSR 4.1.2 Lite: the provider's kernels and constants are made for 960x540 -> 1920x1080 only (Vela 0.7.0);
+-        // another size is refused here with a line the plugin shows (py_modules/sgsr3.py log_summary)
++        // FSR 4.1.2 Lite (Vela 0.8.2-rs): the provider runs any render size whose AMD model is the 540p one (render width
++        // 645..1920, height >= 360) -> 1920x1080); a render width of 641 or less (640x360) is another AMD model the
++        // provider has no kernels for. Refused here with a line the plugin shows (py_modules/sgsr3.py log_summary)
+         if (lm == VelaLive::Model::Fsr4Lite &&
+-            (RenderWidth() != 960 || RenderHeight() != 540 || TargetWidth() != 1920 || TargetHeight() != 1080))
++            (RenderWidth() < 645 || RenderHeight() < 360 || RenderWidth() > 1920 || RenderHeight() > 1080 ||
++             TargetWidth() != 1920 || TargetHeight() != 1080))
+         {
+-            LOG_WARN("SGSR3: FSR 4.1 Lite runs only 960x540 -> 1920x1080, not {0}x{1} -> {2}x{3}; Vela AI instead",
++            LOG_WARN("SGSR3: FSR 4.1 Lite runs only from 645x360 to 1920x1080 render -> 1920x1080, not {0}x{1} -> {2}x{3}; Vela AI instead",
+                      RenderWidth(), RenderHeight(), TargetWidth(), TargetHeight());
+             if (VelaLive::St().cur.npu != 0)
+             {

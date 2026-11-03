@@ -1,0 +1,132 @@
+#version 450
+// SPDX-License-Identifier: GPL-2.0-or-later (frame-skip rules derived from fsr4-shader-performance-overrides, FSR 4.1.2 lossy); reproject and rule kernel (base of sr_r4.comp)
+#extension GL_EXT_samplerless_texture_functions : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#define CR 1
+#define SRR 1
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(set = 0, binding = 141, std430) buffer type_RWByteAddressBuffer { uint _m0[]; } ScratchBuffer;
+layout(set = 0, binding = 257, std140) uniform type_MLSR_Optimized_Constants
+{
+    vec2 inv_size; vec2 scale; vec2 inv_scale; vec2 jitter; vec2 mv_scale; vec2 tex_size; vec2 max_renderSize; vec2 fMotionVectorJitterCancellation;
+    uint width; uint height; uint reset; uint width_lr; uint height_lr; float preExposure; float previous_preExposure; uint rcas_enabled; float rcas_sharpness; float pad;
+} MLSR_Optimized_Constants;
+layout(set = 0, binding = 320) uniform sampler g_history_sampler;
+layout(set = 0, binding = 0) uniform texture2D r_history_color;
+layout(set = 0, binding = 1) uniform texture2D r_velocity;
+layout(set = 0, binding = 2) uniform texture2D r_depth;
+layout(set = 0, binding = 3) uniform texture2D r_input_color;
+layout(set = 0, binding = 17) uniform texture2D r_auto_exposure_texture;
+layout(set = 0, binding = 131) uniform writeonly image2D rw_reprojected_color;
+layout(push_constant) uniform DPC { uint src; uint dst; uint flags; uint pad; } pc;
+float d_lw(float d) { return exp((d * d) * (-2.2634675502777099609375)); }
+vec3 d_lg(ivec2 c, float e) { return max(log(vec3(1.0) + ((texelFetch(r_input_color, c, 0).xyz * e) * 150.0)) * 0.117399998009204864501953125, vec3(0.0)); }
+vec2 sr_lr() { return vec2(float(MLSR_Optimized_Constants.width_lr), float(MLSR_Optimized_Constants.height_lr)); }
+vec2 sr_mv(ivec2 c) { vec2 v = texelFetch(r_velocity, c, 0).xy * MLSR_Optimized_Constants.mv_scale;
+    if (any(isnan(v)) || any(isinf(v)) || any(greaterThan(abs(v), vec2(1000.0)))) v = vec2(0.0); return v * sr_lr(); }
+const float SR_DIFF = 1.0;
+// returns bit0 rest, bit2 uncovered / scrolled in, bit3 edge
+uint sr_cell(ivec2 ip, vec2 m0, ivec2 lim) {
+    vec2 mr0 = sr_mv(ip); float d0 = texelFetch(r_depth, ip, 0).x; vec2 tgt = vec2(ip) + mr0;
+    ivec2 q0 = ivec2(roundEven(vec2(ip) + m0)); bool outq = any(lessThan(q0, ivec2(0))) || any(greaterThan(q0, lim)); ivec2 qc = clamp(q0, ivec2(0), lim);
+    const ivec2 DI[8] = ivec2[8](ivec2(1, 0), ivec2(-1, 0), ivec2(0, 1), ivec2(0, -1), ivec2(1, 1), ivec2(-1, -1), ivec2(1, -1), ivec2(-1, 1));
+    const int RR[4] = int[4](3, 8, 16, 24);
+    bool diff = false, unc = false; vec2 last = vec2(1e9); float eps = max(1e-4, 0.01 * abs(d0));
+    for (int i = 0; i < 33; i++) {      // 8 directions x 3, 8, 16, 24 cells (diagonals x0.7), then q = p + D_p
+        int k = i & 7, rr = RR[min(i >> 3, 3)]; ivec2 dv = k < 4 ? DI[k] * rr : DI[k] * ((rr * 7 + 5) / 10);
+        vec2 mn_ = sr_mv(clamp(i < 32 ? ip + dv : qc, ivec2(0), lim));
+        if ((i < 24 || i == 32) && length(mn_ - m0) >= SR_DIFF) diff = true;   // edge: within 16 cells or at q
+        if (unc || (pc.flags & 16u) != 0u || length(mn_ - mr0) < SR_DIFF || length(mn_ - last) < 0.5) continue;
+        last = mn_; vec2 rf = tgt - mn_;   // the point of that surface that was at p + D_p now sits at r = p + D_p - D_n
+        for (int it = 0; it < 2 && !unc; it++) {
+            ivec2 r0 = ivec2(roundEven(rf)); bool found = false; vec2 mf = vec2(0.0);
+            for (int j = 0; j < 9; j++) { ivec2 r = clamp(r0 + ivec2(j % 3 - 1, j / 3 - 1), ivec2(0), lim);
+                vec2 mr = sr_mv(r); if (length(mr - mr0) < SR_DIFF) continue;
+                float dr = texelFetch(r_depth, r, 0).x; found = true; mf = mr;
+                if (length(vec2(r) + mr - tgt) <= 1.5 && dr < d0 - eps) { unc = true; break; } }
+            if (!found) break; rf = tgt - mf; } }
+    bool rest = all(lessThan(abs(m0), vec2(0.25))) && !diff && (pc.flags & 32u) == 0u;
+    return (rest ? 1u : 0u) | ((unc || (outq && !rest)) ? 4u : 0u) | (diff ? 8u : 0u);
+}
+
+void main()
+{
+    uvec2 p = gl_GlobalInvocationID.xy;
+    if (p.x >= MLSR_Optimized_Constants.width_lr || p.y >= MLSR_Optimized_Constants.height_lr) return;
+    ivec2 lim = ivec2(int(MLSR_Optimized_Constants.width_lr - 1u), int(MLSR_Optimized_Constants.height_lr - 1u));
+    ivec2 ip = ivec2(p); ivec2 cb = ip; float fb = texelFetch(r_depth, ip, 0).x;
+    for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) { ivec2 c = clamp(ip + ivec2(dx, dy), ivec2(0), lim); float d = texelFetch(r_depth, c, 0).x; if (d < fb) { fb = d; cb = c; } }
+    vec2 v = texelFetch(r_velocity, cb, 0).xy * MLSR_Optimized_Constants.mv_scale;
+    bool ok = !(any(isnan(v)) || any(isinf(v)) || any(greaterThan(v, vec2(1000000.0))));
+    vec2 _478 = ok ? v : vec2(0.0);
+    ivec2 sp = ip; if ((pc.flags & 2u) == 0u) sp = clamp(ip + ivec2(roundEven(_478 * vec2(float(MLSR_Optimized_Constants.width_lr), float(MLSR_Optimized_Constants.height_lr)))), ivec2(0), lim);
+    { uint s = pc.src + ((uint(sp.y) * 960u) + uint(sp.x)) * 4u, d = pc.dst + ((p.y * 960u) + p.x) * 4u;
+      uvec4 f = uvec4(ScratchBuffer._m0[s], ScratchBuffer._m0[s + 1u], ScratchBuffer._m0[s + 2u], ScratchBuffer._m0[s + 3u]);
+      ScratchBuffer._m0[d] = f.x; ScratchBuffer._m0[d + 1u] = f.y; ScratchBuffer._m0[d + 2u] = f.z; ScratchBuffer._m0[d + 3u] = f.w; }
+    float _209 = texelFetch(r_auto_exposure_texture, ivec2(0), 0).x / MLSR_Optimized_Constants.preExposure;
+    bool sr = (pc.flags & 4u) == 0u; uint code = sr ? sr_cell(ip, _478 * sr_lr(), lim) : 0u;
+    float efix = _209 / (texelFetch(r_auto_exposure_texture, ivec2(1, 0), 0).x / MLSR_Optimized_Constants.previous_preExposure);
+    vec2 mvh = vec2((abs(_478.x) <= (0.03125 * MLSR_Optimized_Constants.inv_size.x)) ? 0.0 : _478.x, (abs(_478.y) <= (0.03125 * MLSR_Optimized_Constants.inv_size.y)) ? 0.0 : _478.y) * vec2(float(MLSR_Optimized_Constants.width), float(MLSR_Optimized_Constants.height));
+    for (uint k = 0u; k < 4u; k++) {
+        uvec2 q = p * 2u + uvec2(k & 1u, k >> 1u);
+        vec2 _216 = vec2(q);
+        vec2 _221 = ((vec2(-0.5) + (MLSR_Optimized_Constants.inv_scale * vec2(0.5))) + _216 * MLSR_Optimized_Constants.inv_scale) + MLSR_Optimized_Constants.jitter;
+        vec3 _664 = vec3(0.0);
+        if (ok) {
+            vec2 _516 = _216 + mvh; vec2 _517 = _516 + vec2(0.5);
+            if (0.0 <= _516.x && _516.x <= float(MLSR_Optimized_Constants.width - 1u) && 0.0 <= _516.y && _516.y <= float(MLSR_Optimized_Constants.height - 1u)) {
+#ifdef CR
+                vec2 _543 = floor(_516);
+                vec2 _544 = _543 + vec2(0.5);
+                vec2 _545 = _517 - _544;
+                vec2 _546 = _545 * 0.5;
+                vec2 _550 = _545 * (vec2(-0.5) + (_545 * (vec2(1.0) - _546)));
+                vec2 _551 = _545 * _545;
+                vec2 _552 = _545 * 1.5;
+                vec2 _559 = _545 * (vec2(0.5) + (_545 * (vec2(2.0) - _552)));
+                vec2 _561 = _551 * (vec2(-0.5) + _546);
+                vec2 _562 = (vec2(1.0) + (_551 * (vec2(-2.5) + _552))) + _559;
+                vec2 _567 = (_543 + vec2(-0.5)) / MLSR_Optimized_Constants.tex_size;
+                vec2 _568 = (_543 + vec2(2.5)) / MLSR_Optimized_Constants.tex_size;
+                vec2 _569 = (_544 + (_559 / _562)) / MLSR_Optimized_Constants.tex_size;
+                float _572 = _567.x;
+                float _573 = _567.y;
+                float _577 = _550.x;
+                float _579 = _550.y;
+                float _588 = _562.x;
+                float _594 = _568.x;
+                float _599 = _561.x;
+                float _611 = _562.y;
+                float _633 = _568.y;
+                float _639 = _561.y;
+                _664 = (((((((((textureLod(sampler2D(r_history_color, g_history_sampler), _567, 0.0).xyz * _577) * _579) + ((textureLod(sampler2D(r_history_color, g_history_sampler), vec2(_569.x, _573), 0.0).xyz * _588) * _579)) + ((textureLod(sampler2D(r_history_color, g_history_sampler), vec2(_594, _573), 0.0).xyz * _599) * _579)) + ((textureLod(sampler2D(r_history_color, g_history_sampler), vec2(_572, _569.y), 0.0).xyz * _577) * _611)) + ((textureLod(sampler2D(r_history_color, g_history_sampler), _569, 0.0).xyz * _588) * _611)) + ((textureLod(sampler2D(r_history_color, g_history_sampler), vec2(_594, _569.y), 0.0).xyz * _599) * _611)) + ((textureLod(sampler2D(r_history_color, g_history_sampler), vec2(_572, _633), 0.0).xyz * _577) * _639)) + ((textureLod(sampler2D(r_history_color, g_history_sampler), vec2(_569.x, _633), 0.0).xyz * _588) * _639)) + ((textureLod(sampler2D(r_history_color, g_history_sampler), _568, 0.0).xyz * _599) * _639);
+#else
+                _664 = textureLod(sampler2D(r_history_color, g_history_sampler), _517 / MLSR_Optimized_Constants.tex_size, 0.0).xyz;
+#endif
+            }
+        }
+        vec3 _669 = (exp(max(_664, vec3(0.0)) * 8.51788043975830078125) - vec3(1.0)) * vec3(0.006666666828095912933349609375);
+        vec3 h = max(log(vec3(1.0) + ((max(_669, vec3(0.0)) * efix) * 150.0)) * 0.117399998009204864501953125, vec3(0.0));
+        vec3 h0 = h; vec3 mn = vec3(1e30), mx = vec3(-1e30);
+        if ((pc.flags & 1u) != 0u || sr) {
+            ivec2 ic = ivec2(floor(_221 + vec2(0.5)));
+            for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) { vec3 c = d_lg(clamp(ic + ivec2(dx, dy), ivec2(0), lim), _209); mn = min(mn, c); mx = max(mx, c); }
+            if ((pc.flags & 1u) != 0u || (sr && (code & 1u) == 0u && (pc.flags & 64u) == 0u)) h = clamp(h, mn, mx);   // SR: clamp in motion, not at rest
+        }
+#ifndef NOMIX
+        ivec2 i0 = ivec2(floor(_221));
+        vec3 c00 = d_lg(clamp(i0, ivec2(0), lim), _209), c10 = d_lg(clamp(i0 + ivec2(1, 0), ivec2(0), lim), _209);
+        vec3 c01 = d_lg(clamp(i0 + ivec2(0, 1), ivec2(0), lim), _209), c11 = d_lg(clamp(i0 + ivec2(1, 1), ivec2(0), lim), _209);
+        float wx0 = d_lw(MLSR_Optimized_Constants.scale.x * abs(float(i0.x) - _221.x)), wx1 = d_lw(MLSR_Optimized_Constants.scale.x * abs(float(i0.x + 1) - _221.x));
+        float wy0 = d_lw(MLSR_Optimized_Constants.scale.y * abs(float(i0.y) - _221.y)), wy1 = d_lw(MLSR_Optimized_Constants.scale.y * abs(float(i0.y + 1) - _221.y));
+        float w00 = wx0 * wy0, w10 = wx1 * wy0, w01 = wx0 * wy1, w11 = wx1 * wy1;
+        float _350 = max(max(w00, w10), max(w01, w11)) * 0.100000001490116119384765625;
+        vec3 cur = (c00 * w00 + c10 * w10 + c01 * w01 + c11 * w11) / vec3(w00 + w10 + w01 + w11);
+        uint cc = code;
+        if (sr && (code & 1u) != 0u) { vec3 Rg = mx - mn;   // at rest: changed content? (SB_PART 0.25, SB_BRIGHT 0.25 + abs)
+            if (any(lessThan(h0, mn - 0.25 * Rg)) || any(greaterThan(h0, mx + 0.25 * Rg)) || any(greaterThan(abs(cur - h0), 0.25 * Rg + vec3(0.03)))) cc |= 2u; }
+        h = cur * _350 + h * (1.0 - _350);
+#endif
+        imageStore(rw_reprojected_color, ivec2(q), vec4(vec3(f16vec3(h)), sr ? float(cc & 7u) : 0.0));
+    }
+}

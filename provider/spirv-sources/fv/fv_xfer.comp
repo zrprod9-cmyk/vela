@@ -1,0 +1,17 @@
+#version 460
+// Full FSR 4.1.1 scratch <-> HTP tensor. mode 0 pack: X0 interior (scratch uvec4 (y+1)*962+x+1, int8) -> dma in[y*960+x] (uint8 = ^0x80)
+// mode 1 unpack: dma out[y*960+x] ^0x80 -> scratch OUT interior (same addresses; border_12 rewrites the halo). mode 2: copy 962*542 uvec4 a -> b.
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(buffer_reference, std430, buffer_reference_align = 16) buffer U4 { uvec4 v[]; };
+layout(push_constant) uniform P { uint64_t a; uint64_t b; uint mode; } p;
+void main() {
+    U4 s = U4(p.a); U4 d = U4(p.b);
+    if (p.mode == 2u) { uint i = gl_WorkGroupID.x * 256u + gl_LocalInvocationIndex; if (i < 521404u) d.v[i] = s.v[i]; return; }
+    uint x = gl_GlobalInvocationID.x, y = gl_GlobalInvocationID.y;
+    if (x >= 960u || y >= 540u) return;
+    uint si = (y + 1u) * 962u + x + 1u, di = y * 960u + x;
+    if (p.mode == 0u) d.v[di] = s.v[si] ^ uvec4(0x80808080u);
+    else s.v[si] = d.v[di] ^ uvec4(0x80808080u);
+}

@@ -1,0 +1,10 @@
+[20:24:14.821] vela: live settings file Z:\tmp\vela-live\2050650.ini
+[20:24:14.821] vela: live (Z:\tmp\vela-live\2050650.ini): model fsr3 lossy 1 npu 2
+[20:24:26.796] vela: calibration ok: layout fsr2.0+re16 render 640x360 (texture 640x360) display 1920x1080 jitter (-0.1172, 0.1173) mvScale (1.0000, 1.0000) (measured) preExposure 1.000 tan(hfov/2) 0.364 phases 72
+[20:24:27.028] vela: model fsr3 runs 640x360 -> 1920x1080
+[20:24:29.557] fps 69.0 (presents 690 in 10.0 s; frames by Vela 232), FSR 3.1
+[20:24:39.564] fps 75.6 (presents 756 in 10.0 s; frames by Vela 756), FSR 3.1
+[20:25:15.075] vela: live (Z:\tmp\vela-live\2050650.ini): model fsr4 lossy 1 npu 2
+[20:25:15.400] Vela FSR 4 VK: FSR 4.1.1 VK INT8 context 640x360 -> 1920x1080 (hdr 0, network every 1 frames)
+[20:25:15.879] vela: FSR 4 VK: first frame dispatched (colour fmt 97, depth fmt 100, mv fmt 83, out fmt 97)
+[20:25:15.879] vela: model fsr4 runs 640x360 -> 1920x1080

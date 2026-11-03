@@ -1,0 +1,8 @@
+# Built binaries: OptiScaler.dll comes from the fork build (fork/patches, tools/build_fork.sh),
+# OptiPatcher.asi from its upstream release; see assets/sgsr3/VERSION.json
+assets/sgsr3/*.dll
+assets/sgsr3/*.asi
+assets/layer/*.so
+assets/staticfsr/*.dll
+assets/npu/*.so
+preview/out/

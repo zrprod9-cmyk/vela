@@ -1,0 +1,309 @@
+#version 450
+// Derived from AMD FidelityFX SDK shaders (MIT); see ../amd/NOTICE.md. Modifications: GPL-3.0.
+#if defined(GL_AMD_gpu_shader_half_float)
+#extension GL_AMD_gpu_shader_half_float : require
+#elif defined(GL_EXT_shader_explicit_arithmetic_types_float16)
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#else
+#error No extension available for FP16.
+#endif
+#extension GL_EXT_shader_16bit_storage : require
+#extension GL_EXT_samplerless_texture_functions : require
+#extension GL_KHR_shader_subgroup_quad : require
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 141, std430) buffer type_RWByteAddressBuffer
+{
+    uint _m0[];
+} ScratchBuffer;
+
+layout(set = 0, binding = 21, std430) readonly buffer type_ByteAddressBuffer
+{
+    uint _m0[];
+} InitializerBuffer;
+
+layout(set = 0, binding = 257, std140) uniform type_MLSR_Optimized_Constants
+{
+    vec2 inv_size;
+    vec2 scale;
+    vec2 inv_scale;
+    vec2 jitter;
+    vec2 mv_scale;
+    vec2 tex_size;
+    vec2 max_renderSize;
+    vec2 fMotionVectorJitterCancellation;
+    uint width;
+    uint height;
+    uint reset;
+    uint width_lr;
+    uint height_lr;
+    float preExposure;
+    float previous_preExposure;
+    uint rcas_enabled;
+    float rcas_sharpness;
+    float pad;
+} MLSR_Optimized_Constants;
+
+layout(set = 0, binding = 320) uniform sampler g_history_sampler;
+layout(set = 0, binding = 0) uniform texture2D r_history_color;
+layout(set = 0, binding = 1) uniform texture2D r_velocity;
+layout(set = 0, binding = 2) uniform texture2D r_depth;
+layout(set = 0, binding = 3) uniform texture2D r_input_color;
+layout(set = 0, binding = 4) uniform texture2D r_recurrent_0;
+layout(set = 0, binding = 17) uniform texture2D r_auto_exposure_texture;
+layout(set = 0, binding = 131) uniform writeonly image2D rw_reprojected_color;
+
+bool front(uint yoff, out f16vec4 o732, out f16vec4 o745)
+{
+    o732 = f16vec4(float16_t(0.0));
+    o745 = f16vec4(float16_t(0.0));
+        uint _172 = gl_LocalInvocationID.x >> 2u;
+        uvec2 _182 = uvec2(((_172 % 8u) << 1u) | (gl_LocalInvocationID.x & 1u), ((_172 / 8u) << 1u) | ((gl_LocalInvocationID.x & 3u) >> 1u));
+        uvec2 _190 = _182 + uvec2(gl_WorkGroupID.x * 16u, gl_WorkGroupID.y * 16u + yoff);
+        bool _201;
+        if (_190.x < MLSR_Optimized_Constants.width)
+        {
+            _201 = _190.y >= MLSR_Optimized_Constants.height;
+        }
+        else
+        {
+            _201 = true;
+        }
+        if (_201)
+        {
+            return false;
+        }
+        float _209 = texelFetch(r_auto_exposure_texture, ivec2(uvec2(0u)), int(0u)).x / MLSR_Optimized_Constants.preExposure;
+        vec2 _213 = (MLSR_Optimized_Constants.inv_scale * 0.5) - vec2(0.5);
+        vec2 _216 = vec2(_190);
+        vec2 _217 = _216 * MLSR_Optimized_Constants.inv_scale;
+        vec2 _221 = ((vec2(-0.5) + (MLSR_Optimized_Constants.inv_scale * vec2(0.5))) + _217) + MLSR_Optimized_Constants.jitter;
+        ivec2 _223 = ivec2(floor(_221));
+        int _224 = _223.x;
+        int _225 = _224 + 1;
+        int _226 = _223.y;
+        int _227 = _226 + 1;
+        uint _228 = uint(_224);
+        uint _229 = uint(_226);
+        ivec2 _240 = ivec2(int(MLSR_Optimized_Constants.width_lr - 1u), int(MLSR_Optimized_Constants.height_lr - 1u));
+        vec3 _250 = log(vec3(1.0) + ((texelFetch(r_input_color, ivec2(uvec2(clamp(ivec2(uvec2(_228, _229)), ivec2(0), _240))), int(0u)).xyz * _209) * 150.0)) * 0.117399998009204864501953125;
+        uint _252 = uint(_225);
+        vec3 _264 = log(vec3(1.0) + ((texelFetch(r_input_color, ivec2(uvec2(clamp(ivec2(uvec2(_252, _229)), ivec2(0), _240))), int(0u)).xyz * _209) * 150.0)) * 0.117399998009204864501953125;
+        uint _266 = uint(_227);
+        vec3 _278 = log(vec3(1.0) + ((texelFetch(r_input_color, ivec2(uvec2(clamp(ivec2(uvec2(_228, _266)), ivec2(0), _240))), int(0u)).xyz * _209) * 150.0)) * 0.117399998009204864501953125;
+        vec3 _291 = log(vec3(1.0) + ((texelFetch(r_input_color, ivec2(uvec2(clamp(ivec2(uvec2(_252, _266)), ivec2(0), _240))), int(0u)).xyz * _209) * 150.0)) * 0.117399998009204864501953125;
+        float _294 = _221.x;
+        float _299 = MLSR_Optimized_Constants.scale.x * abs(float(_224) - _294);
+        float _302 = exp((_299 * _299) * (-2.2634675502777099609375));
+        float _306 = MLSR_Optimized_Constants.scale.x * abs(float(_225) - _294);
+        float _309 = exp((_306 * _306) * (-2.2634675502777099609375));
+        float _311 = _221.y;
+        float _316 = MLSR_Optimized_Constants.scale.y * abs(float(_226) - _311);
+        float _319 = exp((_316 * _316) * (-2.2634675502777099609375));
+        float _323 = MLSR_Optimized_Constants.scale.y * abs(float(_227) - _311);
+        float _326 = exp((_323 * _323) * (-2.2634675502777099609375));
+        float _327 = _302 * _319;
+        float _328 = _309 * _319;
+        float _329 = _302 * _326;
+        float _330 = _309 * _326;
+        float _334 = isnan(_328) ? _327 : (isnan(_327) ? _328 : max(_327, _328));
+        float _335 = isnan(_329) ? _334 : (isnan(_334) ? _329 : max(_334, _329));
+        float _336 = isnan(_330) ? _335 : (isnan(_335) ? _330 : max(_335, _330));
+        vec3 _345 = ((((mix(mix(max(_250, vec3(0.0)), vec3(0.0), isnan(_250)), _250, isnan(vec3(0.0))) * _327) + (mix(mix(max(_264, vec3(0.0)), vec3(0.0), isnan(_264)), _264, isnan(vec3(0.0))) * _328)) + (mix(mix(max(_278, vec3(0.0)), vec3(0.0), isnan(_278)), _278, isnan(vec3(0.0))) * _329)) + (mix(mix(max(_291, vec3(0.0)), vec3(0.0), isnan(_291)), _291, isnan(vec3(0.0))) * _330)) / vec3(((_327 + _328) + _329) + _330);
+        vec4 _349 = vec4(_345, _336);
+        float _350 = _336 * 0.100000001490116119384765625;
+        vec2 _459;
+
+        {
+            vec2 cl = roundEven(((_216 + vec2(-1.0)) * MLSR_Optimized_Constants.inv_scale) + _213);
+            vec2 ch = roundEven(((_216 + vec2(1.0)) * MLSR_Optimized_Constants.inv_scale) + _213);
+            ivec2 iLL = ivec2(cl.x, cl.y);
+            ivec2 iHH = ivec2(ch.x, ch.y);
+            ivec2 iHL = ivec2(iHH.x, iLL.y);
+            ivec2 iLH = ivec2(iLL.x, iHH.y);
+            float dLL = texelFetch(r_depth, ivec2(uvec2(iLL)), int(0u)).x;
+            float dHL = texelFetch(r_depth, ivec2(uvec2(iHL)), int(0u)).x;
+            float dLH = texelFetch(r_depth, ivec2(uvec2(iLH)), int(0u)).x;
+            float dHH = texelFetch(r_depth, ivec2(uvec2(iHH)), int(0u)).x;
+            bool xo = (_190.x & 1u) != 0u;
+            bool yo = (_190.y & 1u) != 0u;
+            int x0 = xo ? iLL.x : iHH.x;
+            int y0 = yo ? iLL.y : iHH.y;
+            float vxl_y0 = yo ? dLL : dLH;
+            float vxh_y0 = yo ? dHL : dHH;
+            float vx0_yl = xo ? dLL : dHL;
+            float vx0_yh = xo ? dLH : dHH;
+            float v00 = xo ? vxl_y0 : vxh_y0;
+            ivec2 cbest = ivec2(x0, y0);
+            float fbest = v00;
+            if (dLL < fbest) { fbest = dLL; cbest = iLL; }
+            if (vxl_y0 < fbest) { fbest = vxl_y0; cbest = ivec2(iLL.x, y0); }
+            if (dLH < fbest) { fbest = dLH; cbest = iLH; }
+            if (vx0_yl < fbest) { fbest = vx0_yl; cbest = ivec2(x0, iLL.y); }
+            if (vx0_yh < fbest) { fbest = vx0_yh; cbest = ivec2(x0, iHH.y); }
+            if (dHL < fbest) { fbest = dHL; cbest = iHL; }
+            if (vxh_y0 < fbest) { fbest = vxh_y0; cbest = ivec2(iHH.x, y0); }
+            if (dHH < fbest) { fbest = dHH; cbest = iHH; }
+            _459 = texelFetch(r_velocity, ivec2(uvec2(cbest)), int(0u)).xy * MLSR_Optimized_Constants.mv_scale;
+        }
+        vec2 _478;
+        bool _479;
+        do
+        {
+            bool _469;
+            if (!any(isnan(_459)))
+            {
+                _469 = any(isinf(_459));
+            }
+            else
+            {
+                _469 = true;
+            }
+            bool _475;
+            if (!_469)
+            {
+                _475 = any(greaterThan(_459, vec2(1000000.0)));
+            }
+            else
+            {
+                _475 = true;
+            }
+            if (_475)
+            {
+                _478 = vec2(0.0);
+                _479 = true;
+                break;
+            }
+            _478 = _459;
+            _479 = false;
+            break;
+        } while(false);
+        vec3 _502;
+        if (MLSR_Optimized_Constants.reset != 0u)
+        {
+            _502 = _349.xyz;
+        }
+        else
+        {
+            _502 = vec3(0.0);
+        }
+        bool _512;
+        if (!_479)
+        {
+            _512 = MLSR_Optimized_Constants.reset == 0u;
+        }
+        else
+        {
+            _512 = false;
+        }
+        vec4 _690;
+        vec3 _691;
+        if (_512)
+        {
+            vec2 _516 = _216 + (vec2((abs(_478.x) <= (0.03125 * MLSR_Optimized_Constants.inv_size.x)) ? 0.0 : _478.x, (abs(_478.y) <= (0.03125 * MLSR_Optimized_Constants.inv_size.y)) ? 0.0 : _478.y) * vec2(float(MLSR_Optimized_Constants.width), float(MLSR_Optimized_Constants.height)));
+            vec2 _517 = _516 + vec2(0.5);
+            float _521 = _516.x;
+            bool _528;
+            if (0.0 <= _521)
+            {
+                _528 = _521 <= float(MLSR_Optimized_Constants.width - 1u);
+            }
+            else
+            {
+                _528 = false;
+            }
+            bool _533;
+            if (_528)
+            {
+                _533 = 0.0 <= _516.y;
+            }
+            else
+            {
+                _533 = false;
+            }
+            bool _540;
+            if (_533)
+            {
+                _540 = _516.y <= float(MLSR_Optimized_Constants.height - 1u);
+            }
+            else
+            {
+                _540 = false;
+            }
+            vec4 _663;
+            vec3 _664;
+            if (_540)
+            {
+                vec2 _543 = floor(_516);
+                vec2 _544 = _543 + vec2(0.5);
+                vec2 _545 = _517 - _544;
+                vec2 _546 = _545 * 0.5;
+                vec2 _550 = _545 * (vec2(-0.5) + (_545 * (vec2(1.0) - _546)));
+                vec2 _551 = _545 * _545;
+                vec2 _552 = _545 * 1.5;
+                vec2 _559 = _545 * (vec2(0.5) + (_545 * (vec2(2.0) - _552)));
+                vec2 _561 = _551 * (vec2(-0.5) + _546);
+                vec2 _562 = (vec2(1.0) + (_551 * (vec2(-2.5) + _552))) + _559;
+                vec2 _567 = (_543 + vec2(-0.5)) / MLSR_Optimized_Constants.tex_size;
+                vec2 _568 = (_543 + vec2(2.5)) / MLSR_Optimized_Constants.tex_size;
+                vec2 _569 = (_544 + (_559 / _562)) / MLSR_Optimized_Constants.tex_size;
+                float _572 = _567.x;
+                float _573 = _567.y;
+                float _577 = _550.x;
+                float _579 = _550.y;
+                float _588 = _562.x;
+                float _594 = _568.x;
+                float _599 = _561.x;
+                float _611 = _562.y;
+                float _633 = _568.y;
+                float _639 = _561.y;
+                _663 = textureLod(sampler2D(r_recurrent_0, g_history_sampler), _517 / MLSR_Optimized_Constants.tex_size, 0.0);
+                _664 = (((((((((textureLod(sampler2D(r_history_color, g_history_sampler), _567, 0.0).xyz * _577) * _579) + ((textureLod(sampler2D(r_history_color, g_history_sampler), vec2(_569.x, _573), 0.0).xyz * _588) * _579)) + ((textureLod(sampler2D(r_history_color, g_history_sampler), vec2(_594, _573), 0.0).xyz * _599) * _579)) + ((textureLod(sampler2D(r_history_color, g_history_sampler), vec2(_572, _569.y), 0.0).xyz * _577) * _611)) + ((textureLod(sampler2D(r_history_color, g_history_sampler), _569, 0.0).xyz * _588) * _611)) + ((textureLod(sampler2D(r_history_color, g_history_sampler), vec2(_594, _569.y), 0.0).xyz * _599) * _611)) + ((textureLod(sampler2D(r_history_color, g_history_sampler), vec2(_572, _633), 0.0).xyz * _577) * _639)) + ((textureLod(sampler2D(r_history_color, g_history_sampler), vec2(_569.x, _633), 0.0).xyz * _588) * _639)) + ((textureLod(sampler2D(r_history_color, g_history_sampler), _568, 0.0).xyz * _599) * _639);
+            }
+            else
+            {
+                _663 = vec4(0.0);
+                _664 = _502;
+            }
+            vec3 _669 = (exp(mix(mix(max(_664, vec3(0.0)), vec3(0.0), isnan(_664)), _664, isnan(vec3(0.0))) * 8.51788043975830078125) - vec3(1.0)) * vec3(0.006666666828095912933349609375);
+            vec3 _683 = log(vec3(1.0) + (((mix(mix(max(_669, vec3(0.0)), vec3(0.0), isnan(_669)), _669, isnan(vec3(0.0))) / vec3(texelFetch(r_auto_exposure_texture, ivec2(uvec2(1u, 0u)), int(0u)).x / MLSR_Optimized_Constants.previous_preExposure)) * _209) * 150.0)) * 0.117399998009204864501953125;
+            _690 = _663;
+            vec3 jh = mix(mix(max(_683, vec3(0.0)), vec3(0.0), isnan(_683)), _683, isnan(vec3(0.0)));
+            {
+                vec3 s00 = mix(max(_250, vec3(0.0)), vec3(0.0), isnan(_250)), s10 = mix(max(_264, vec3(0.0)), vec3(0.0), isnan(_264));
+                vec3 s01 = mix(max(_278, vec3(0.0)), vec3(0.0), isnan(_278)), s11 = mix(max(_291, vec3(0.0)), vec3(0.0), isnan(_291));
+                vec3 jmn = min(min(s00, s10), min(s01, s11)), jmx = max(max(s00, s10), max(s01, s11));
+                ivec2 jic = ivec2(floor(_221 + vec2(0.5)));
+                int jex = (jic.x == _224) ? (_224 - 1) : (_224 + 2);
+                int jey = (jic.y == _226) ? (_226 - 1) : (_226 + 2);
+                ivec2 jc[5] = ivec2[5](ivec2(jex, _226), ivec2(jex, _227), ivec2(_224, jey), ivec2(_225, jey), ivec2(jex, jey));
+                for (int k = 0; k < 5; k++) {
+                    vec3 v = log(vec3(1.0) + ((texelFetch(r_input_color, clamp(jc[k], ivec2(0), _240), int(0u)).xyz * _209) * 150.0)) * 0.117399998009204864501953125;
+                    v = mix(max(v, vec3(0.0)), vec3(0.0), isnan(v)); jmn = min(jmn, v); jmx = max(jmx, v);
+                }
+                jh = clamp(jh, jmn, jmx);
+            }
+            _691 = (_349.xyz * _350) + (jh * (1.0 - _350));
+        }
+        else
+        {
+            _690 = vec4(0.0);
+            _691 = _502;
+        }
+        imageStore(rw_reprojected_color, ivec2(_190), vec3(f16vec3(_691)).xyzz);
+        float _699 = ((_345.x * 0.2125999927520751953125) + (_345.y * 0.715200006961822509765625)) + (_345.z * 0.072200000286102294921875);
+        float _709 = ((_691.x * 0.2125999927520751953125) + (_691.y * 0.715200006961822509765625)) + (_691.z * 0.072200000286102294921875);
+        f16vec4 _732 = f16vec4((float16_t(2.0) * float16_t(_699)) - float16_t(1.0), (float16_t(2.0) * float16_t(_709)) - float16_t(1.0), float16_t(sqrt((pow(0.538909256458282470703125 * ((_345.z - _699) - (_691.z - _709)), 2.0) + pow(0.635001242160797119140625 * ((_345.x - _699) - (_691.x - _709)), 2.0)) + 9.9999999747524270787835121154785e-07)), (float16_t(2.0) * float16_t(_690.x)) - float16_t(1.0));
+        f16vec4 _745 = f16vec4((float16_t(2.0) * float16_t(_690.y)) - float16_t(1.0), (float16_t(2.0) * float16_t(_690.z)) - float16_t(1.0), (float16_t(2.0) * float16_t(_690.w)) - float16_t(1.0), float16_t(0.0));
+    o732 = _732;
+    o745 = _745;
+    return true;
+}
+
+void main()
+{
+    if ((gl_WorkGroupID.y % 2u) != 0u) { return; }
+    f16vec4 a0, b0, a1, b1;
+    front(0u, a0, b0);
+    front(16u, a1, b1);
+}

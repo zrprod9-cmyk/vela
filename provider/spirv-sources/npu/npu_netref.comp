@@ -1,0 +1,14 @@
+#version 450
+// Test only (g_lite_npu_loopback): writes the exact GPU network result in the output layout into the tensor-in
+// image, so an echoing stub daemon "returns the GPU network result": u64 = pixel-unshuffle of the GPU pass-9 output
+// (scratch +16684928, haloed), r = int8 0 (0x80). unpack(u64, r) = sat(v + 0) = v, bit-exact.
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0, std430) readonly buffer S { uvec4 q[]; } scr;
+layout(set = 0, binding = 1, r32ui) uniform writeonly uimage2D tin;
+layout(set = 0, binding = 3, r32ui) uniform writeonly uimage2D r;
+#define ST(img, w, v) imageStore(img, ivec2(int((w) % 1920u), int((w) / 1920u)), uvec4(v))
+void main() { uint p = gl_GlobalInvocationID.x; if (p >= 518400u) return; uint x = p % 960u, y = p / 960u;
+  uvec4 v = scr.q[1042808u + (x + 1u) + 962u * (y + 1u)] ^ uvec4(0x80808080u);
+  uint w = 4u * (((y >> 1) * 480u + (x >> 1)) * 4u + (y & 1u) * 2u + (x & 1u));
+  ST(tin, w, v.x); ST(tin, w + 1u, v.y); ST(tin, w + 2u, v.z); ST(tin, w + 3u, v.w);
+  uint q = 4u * p; ST(r, q, 0x80808080u); ST(r, q + 1u, 0x80808080u); ST(r, q + 2u, 0x80808080u); ST(r, q + 3u, 0x80808080u); }

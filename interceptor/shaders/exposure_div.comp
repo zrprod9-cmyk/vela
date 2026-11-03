@@ -1,0 +1,16 @@
+#version 450
+// FSR 2 keeps its upscaled history divided by its auto-exposure (accumulate: rgb /= Exposure(); RCAS multiplies
+// back). After Vela writes the frame into that history texture, divide it by the same exposure, read from the
+// game's 1x1 exposure texture (R32G32_FLOAT, .r), so RCAS and the rest of RE4's post see the values they expect.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0, rgba16f) uniform image2D Img;
+layout(set = 0, binding = 1) uniform sampler2D Exposure;
+layout(push_constant) uniform P { ivec2 size; } pc;
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(p, pc.size))) return;
+    float e = max(texelFetch(Exposure, ivec2(0), 0).r, 1e-6);
+    vec4 c = imageLoad(Img, p);
+    imageStore(Img, p, vec4(c.rgb / e, c.a));
+}

@@ -1,0 +1,51 @@
+drwxr-xr-x root/root                26 2025-11-01 00:00 squashfs-root
+drwxr-xr-x root/root                63 2025-11-01 00:00 squashfs-root/usr
+drwxr-xr-x root/root                36 2025-11-01 00:00 squashfs-root/usr/bin
+lrwxrwxrwx root/root                31 2025-11-01 00:00 squashfs-root/usr/bin/fsr4npu-check -> ../lib64/vela-npu/fsr4npu-check
+drwxr-xr-x root/root               103 2025-11-01 00:00 squashfs-root/usr/lib
+drwxr-xr-x root/root                56 2025-11-01 00:00 squashfs-root/usr/lib/extension-release.d
+-rw-r--r-- root/root               454 2025-11-01 00:00 squashfs-root/usr/lib/extension-release.d/extension-release.armada-vela-npu
+drwxr-xr-x root/root                36 2025-11-01 00:00 squashfs-root/usr/lib/modules-load.d
+-rw-r--r-- root/root               226 2025-11-01 00:00 squashfs-root/usr/lib/modules-load.d/vela-npu.conf
+drwxr-xr-x root/root                27 2025-11-01 00:00 squashfs-root/usr/lib/rfsa
+drwxr-xr-x root/root                94 2025-11-01 00:00 squashfs-root/usr/lib/rfsa/adsp
+-rw-r--r-- root/root          11277560 2025-11-01 00:00 squashfs-root/usr/lib/rfsa/adsp/libQairtHtpV73Skel.so
+-rw-r--r-- root/root          11662584 2025-11-01 00:00 squashfs-root/usr/lib/rfsa/adsp/libQnnHtpV73.so
+-rw-r--r-- root/root          11277560 2025-11-01 00:00 squashfs-root/usr/lib/rfsa/adsp/libQnnHtpV73Skel.so
+drwxr-xr-x root/root                29 2025-11-01 00:00 squashfs-root/usr/lib/systemd
+drwxr-xr-x root/root               103 2025-11-01 00:00 squashfs-root/usr/lib/systemd/system
+-rw-r--r-- root/root              1179 2025-11-01 00:00 squashfs-root/usr/lib/systemd/system/vela-npu-listener.service
+-rw-r--r-- root/root              1272 2025-11-01 00:00 squashfs-root/usr/lib/systemd/system/vela-npu-setup.service
+-rw-r--r-- root/root              3124 2025-11-01 00:00 squashfs-root/usr/lib/systemd/system/vela-npu@.service
+drwxr-xr-x root/root                30 2025-11-01 00:00 squashfs-root/usr/lib/udev
+drwxr-xr-x root/root                40 2025-11-01 00:00 squashfs-root/usr/lib/udev/rules.d
+-rw-r--r-- root/root               798 2025-11-01 00:00 squashfs-root/usr/lib/udev/rules.d/70-vela-npu.rules
+drwxr-xr-x root/root                31 2025-11-01 00:00 squashfs-root/usr/lib64
+drwxr-xr-x root/root               499 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu
+-rw-r--r-- root/root              2153 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/MANIFEST.md5
+-rwxr-xr-x root/root             81576 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/cdsprpcd
+-rwxr-xr-x root/root            747752 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/fsr4npu-check
+-rwxr-xr-x root/root            137569 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/fsr4npud
+-rwxr-xr-x root/root           4267144 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/libQnnHtp.so
+-rwxr-xr-x root/root            481352 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/libQnnHtpV73Stub.so
+-rwxr-xr-x root/root           5364936 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/libQnnSystem.so
+lrwxrwxrwx root/root                29 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/libcdsp_default_listener.so -> libcdsp_default_listener.so.1
+lrwxrwxrwx root/root                33 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/libcdsp_default_listener.so.1 -> libcdsp_default_listener.so.1.0.0
+-rwxr-xr-x root/root            109496 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/libcdsp_default_listener.so.1.0.0
+lrwxrwxrwx root/root                15 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/libcdsprpc.so -> libcdsprpc.so.1
+lrwxrwxrwx root/root                19 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/libcdsprpc.so.1 -> libcdsprpc.so.1.0.0
+-rwxr-xr-x root/root           1653736 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/libcdsprpc.so.1.0.0
+-rw-r--r-- root/root           1622016 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/nf4_exact.bin
+-rw-r--r-- root/root           1757184 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/nf4_k1h.bin
+-rw-r--r-- root/root           1253376 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/nf4_k1h_360.bin
+-rw-r--r-- root/root           1556480 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/nf4_k1h_450.bin
+-rw-r--r-- root/root           1789952 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/nf4up_k1h.bin
+-rw-r--r-- root/root           1241088 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/nf4up_k1h_360.bin
+-rw-r--r-- root/root           1572864 2025-11-01 00:00 squashfs-root/usr/lib64/vela-npu/nf4up_k1h_450.bin
+drwxr-xr-x root/root                31 2025-11-01 00:00 squashfs-root/usr/share
+drwxr-xr-x root/root                38 2025-11-01 00:00 squashfs-root/usr/share/licenses
+drwxr-xr-x root/root               124 2025-11-01 00:00 squashfs-root/usr/share/licenses/armada-vela-npu
+-rw-r--r-- root/root            129238 2025-11-01 00:00 squashfs-root/usr/share/licenses/armada-vela-npu/QNN_NOTICE.txt
+-rw-r--r-- root/root            147577 2025-11-01 00:00 squashfs-root/usr/share/licenses/armada-vela-npu/Qualcomm-AI-Stack-LICENSE.pdf
+-rw-r--r-- root/root              1197 2025-11-01 00:00 squashfs-root/usr/share/licenses/armada-vela-npu/README.txt
+-rw-r--r-- root/root              1565 2025-11-01 00:00 squashfs-root/usr/share/licenses/armada-vela-npu/fastrpc-BSD-3-Clause.txt

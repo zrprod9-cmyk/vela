@@ -1,0 +1,11 @@
+#version 450
+// GPU -> HTP handoff: scratch (962x542x16 int8, zero halo, offset 0 = pass0_post output)
+// -> dense 960x540x16 uint8 (int8 ^ 0x80) = graph input x, written as 32-bit words into the R32_UINT 1920x1080 tensor image
+// (word j at pixel (j % 1920, j / 1920): a tight image->buffer copy gives the exact HTP byte layout, 8,294,400 B).
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0, std430) readonly buffer S { uvec4 q[]; } scr;
+layout(set = 0, binding = 1, r32ui) uniform writeonly uimage2D tin;
+#define ST(w, v) imageStore(tin, ivec2(int((w) % 1920u), int((w) / 1920u)), uvec4(v))
+void main() { uint p = gl_GlobalInvocationID.x; if (p >= 518400u) return; uint x = p % 960u, y = p / 960u;
+  uvec4 v = scr.q[(x + 1u) + 962u * (y + 1u)] ^ uvec4(0x80808080u); uint w = 4u * p;
+  ST(w, v.x); ST(w + 1u, v.y); ST(w + 2u, v.z); ST(w + 3u, v.w); }

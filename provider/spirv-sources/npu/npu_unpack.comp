@@ -1,0 +1,22 @@
+#version 450
+// HTP -> GPU handoff out = sat_int8(pixelshuffle(p3u_o) + p1f_o) written to
+// scratch +16684928 as 962x542x16 int8 with zero halo (what K1 reads). p3u_o (u64): 270x480x64 uint8 = image out0,
+// p1f_o (r): 540x960x16 uint8 = image out1, both int8 ^ 0x80, both as 32-bit words in R32_UINT 1920x1080 images.
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0, std430) writeonly buffer S { uvec4 q[]; } scr;
+layout(set = 0, binding = 2, r32ui) uniform readonly uimage2D u;
+layout(set = 0, binding = 3, r32ui) uniform readonly uimage2D r;
+#define LD(img, w) imageLoad(img, ivec2(int((w) % 1920u), int((w) / 1920u))).x
+#define L4(img, i) uvec4(LD(img, 4u * (i)), LD(img, 4u * (i) + 1u), LD(img, 4u * (i) + 2u), LD(img, 4u * (i) + 3u))
+uint addsat(uint a, uint b) {
+  uint o = 0u;
+  for (int k = 0; k < 4; k++) { int s = bitfieldExtract(int(a), 8 * k, 8) + bitfieldExtract(int(b), 8 * k, 8); o = bitfieldInsert(o, uint(clamp(s, -128, 127)), 8 * k, 8); }
+  return o;
+}
+void main() { uint p = gl_GlobalInvocationID.x; if (p >= 521404u) return; uint hx = p % 962u, hy = p / 962u;
+  uvec4 v = uvec4(0u);
+  if (hx >= 1u && hx <= 960u && hy >= 1u && hy <= 540u) { uint x = hx - 1u, y = hy - 1u;
+    uvec4 a = L4(u, ((y >> 1) * 480u + (x >> 1)) * 4u + (y & 1u) * 2u + (x & 1u)) ^ uvec4(0x80808080u);
+    uvec4 b = L4(r, y * 960u + x) ^ uvec4(0x80808080u);
+    v = uvec4(addsat(a.x, b.x), addsat(a.y, b.y), addsat(a.z, b.z), addsat(a.w, b.w)); }
+  scr.q[1042808u + p] = v; }

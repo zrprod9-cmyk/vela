@@ -1,0 +1,179 @@
+diff --git a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+index f225f79e..913cd56c 100644
+--- a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
++++ b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+@@ -1057,38 +1057,55 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
+         if (change)
+         {
+             h.tries++;
+-            LOG_INFO("Vela live: handle {0} model {1} -> {2}", handleId, VelaLive::ModelName(m), UpscalerDisplayName(want));
++            // SGSR 2 / SGSR 3 are made for one render size: the new one takes the size the game draws now (its subrect),
++            // not the feature's creation size (Into the Dead kept a 960x540 feature and drew 1344x756 after the panel
++            // went fsr4lite@2 -> sgsr2@1.5: SGSR 2 at 960x540 showed the top-left of the frame magnified)
++            unsigned int sw = 0, sh = 0;
++            InParameters->Get(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Width, &sw);
++            InParameters->Get(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Height, &sh);
++            VelaLive::SubW = sw;
++            VelaLive::SubH = sh;
++            LOG_INFO("Vela live: handle {0} model {1} -> {2} (the game draws {3}x{4})", handleId, VelaLive::ModelName(m),
++                     UpscalerDisplayName(want), sw, sh);
+             state.newBackend = want;
+             state.changeBackend[handleId] = true;
+         }
+     }
+ 
+-    // Vela live: the game keeps its DLSS feature and draws a smaller subrect (dynamic resolution; the panel's ratio went
+-    // down). SGSR 3 is made for one render size: re-created at the subrect once that size held for 30 frames (once per
+-    // size, so a game whose subrect moves every frame is left alone)
+-    if (feature != nullptr && !state.changeBackend[handleId] && feature->GetUpscalerType() == Upscaler::SGSR3)
++    // Vela live: the game keeps its DLSS feature and draws another subrect (dynamic resolution; the panel's ratio
++    // changed, the game took the new optimal-settings answer some frames after the model change). SGSR 2 and SGSR 3 are
++    // made for one render size: re-created at the subrect once that size held for 30 frames (once per size and handle,
++    // so a game whose subrect moves every frame is left alone). Larger than the feature's creation size is fine up to the
++    // display size: the game draws it into its own textures.
++    if (feature != nullptr && !state.changeBackend[handleId] &&
++        (feature->GetUpscalerType() == Upscaler::SGSR3 || feature->GetUpscalerType() == Upscaler::SGSR2))
+     {
++        struct VelaSub
++        {
++            unsigned int w = 0, h = 0, held = 0;
++        };
++        static ankerl::unordered_dense::map<unsigned int, VelaSub> velaSubs;
++        auto& vs = velaSubs[handleId];
+         unsigned int sw = 0, sh = 0;
+-        static unsigned int lastW = 0, lastH = 0, held = 0;
+         if (InParameters->Get(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Width, &sw) == NVSDK_NGX_Result_Success &&
+             InParameters->Get(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Height, &sh) == NVSDK_NGX_Result_Success &&
+             sw > 0 && sh > 0 && (sw != feature->RenderWidth() || sh != feature->RenderHeight()))
+         {
+-            held = (sw == lastW && sh == lastH) ? held + 1 : 0;
+-            lastW = sw;
+-            lastH = sh;
+-            if (held == 30)
++            vs.held = (sw == vs.w && sh == vs.h) ? vs.held + 1 : 0;
++            vs.w = sw;
++            vs.h = sh;
++            if (vs.held == 30)
+             {
+-                LOG_INFO("Vela live: the game draws {0}x{1}, SGSR 3 made for {2}x{3}: re-created", sw, sh,
++                LOG_INFO("Vela live: the game draws {0}x{1}, {2} made for {3}x{4}: re-created", sw, sh, feature->Name(),
+                          feature->RenderWidth(), feature->RenderHeight());
+                 VelaLive::SubW = sw;
+                 VelaLive::SubH = sh;
+-                state.newBackend = Upscaler::SGSR3;
++                state.newBackend = feature->GetUpscalerType();
+                 state.changeBackend[handleId] = true;
+             }
+         }
+         else
+-            held = 0;
++            vs.held = 0;
+     }
+ 
+     // Backend change or recreation requested
+diff --git a/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h b/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
+index 805ac46a..5f3e1ccb 100644
+--- a/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
++++ b/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
+@@ -243,7 +243,7 @@ class Fsr4VkBridge
+         if (r != 0 || !_ctx)
+         {
+             LOG_ERROR("Vela FSR 4 VK: ffxCreateContext failed ({}) for {}x{} -> {}x{}{}", r, rw, rh, dw, dh,
+-                      _lite ? " (FSR 4.1.2 Lite: this provider has no Lite path)" : "");
++                      _lite ? " (FSR 4.1.2 Lite: 960x540 -> 1920x1080 only, or a provider without Lite)" : "");
+             _ctx = nullptr;
+             return false;
+         }
+diff --git a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
+index 1984f21c..9ac4e458 100644
+--- a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
++++ b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
+@@ -308,7 +308,13 @@ bool SGSR3FeatureDx12::CreatePipelines(ID3D12Device* device)
+         else if (lm == VelaLive::Model::Sr)
+             _fixedMode = Mode::V1Fast;
+         LOG_INFO("SGSR3: Vela live model {0}", VelaLive::ModelName(lm));
+-        if ((lm == VelaLive::Model::Fsr4 || lm == VelaLive::Model::Fsr4Lite) &&
++        // FSR 4.1.2 Lite: the provider's kernels and constants are made for 960x540 -> 1920x1080 only (Vela 0.7.0);
++        // another size is refused here with a line the plugin shows (py_modules/sgsr3.py log_summary)
++        if (lm == VelaLive::Model::Fsr4Lite &&
++            (RenderWidth() != 960 || RenderHeight() != 540 || TargetWidth() != 1920 || TargetHeight() != 1080))
++            LOG_WARN("SGSR3: FSR 4.1 Lite runs only 960x540 -> 1920x1080, not {0}x{1} -> {2}x{3}; Vela AI instead",
++                     RenderWidth(), RenderHeight(), TargetWidth(), TargetHeight());
++        else if ((lm == VelaLive::Model::Fsr4 || lm == VelaLive::Model::Fsr4Lite) &&
+             !_fsr4.Init(device, RenderWidth(), RenderHeight(), TargetWidth(), TargetHeight(), DepthInverted(), IsHdr(),
+                         LowResMV(), JitteredMV(), lm == VelaLive::Model::Fsr4Lite,
+                         (uint32_t) VelaLive::St().cur.lossy))
+@@ -561,17 +567,7 @@ bool SGSR3FeatureDx12::InitInternal(ID3D12GraphicsCommandList* InCommandList, NV
+     // A game with DLSS dynamic resolution keeps its feature and draws a smaller subrect (Into the Dead after the Vela
+     // live ratio went down); re-created from an evaluate (NVNGX_DLSS_Dx12.cpp), SGSR 3 takes the subrect's size,
+     // since its images and the student are made for one render size
+-    {
+-        const unsigned int sw = VelaLive::SubW, sh = VelaLive::SubH;
+-        VelaLive::SubW = VelaLive::SubH = 0;
+-        if (sw > 0 && sh > 0 && sw <= _renderWidth && sh <= _renderHeight && (sw != _renderWidth || sh != _renderHeight))
+-        {
+-            LOG_INFO("SGSR3: render size {0}x{1} from the subrect (feature made for {2}x{3})", sw, sh, _renderWidth,
+-                     _renderHeight);
+-            _renderWidth = sw;
+-            _renderHeight = sh;
+-        }
+-    }
++    VelaLive::TakeSubrect("SGSR3", _renderWidth, _renderHeight, DisplayWidth(), DisplayHeight());
+ 
+     if (Config::Instance()->OutputScalingEnabled.value_or_default() &&
+         (LowResMV() || RenderWidth() == DisplayWidth()))
+diff --git a/OptiScaler/upscalers/sgsr3/VelaLive.h b/OptiScaler/upscalers/sgsr3/VelaLive.h
+index cf6b35b9..d18a0966 100644
+--- a/OptiScaler/upscalers/sgsr3/VelaLive.h
++++ b/OptiScaler/upscalers/sgsr3/VelaLive.h
+@@ -200,10 +200,26 @@ inline const Values& Poll(bool force = false)
+     return s.cur;
+ }
+ 
+-// The render size the game draws now (its DLSS subrect), set by the evaluate that re-creates SGSR 3 for it and taken
+-// by that SGSR 3's Init: OptiScaler re-creates a feature from its creation parameters, which keep the old size.
++// The render size the game draws now (its DLSS subrect), set by the evaluate that re-creates SGSR 2 / SGSR 3 (a live
++// model change or a subrect that held 30 frames) and taken by that feature's Init: OptiScaler re-creates a feature from
++// its creation parameters, which keep the old size.
+ inline unsigned int SubW = 0, SubH = 0;
+ 
++// Init of a fixed-size backend: the render size becomes the subrect the evaluate saw (once; cleared here). Smaller or
++// larger than the creation size, up to the display size (the game draws it into its own textures).
++inline void TakeSubrect(const char* who, unsigned int& renderW, unsigned int& renderH, unsigned int displayW,
++                        unsigned int displayH)
++{
++    const unsigned int sw = SubW, sh = SubH;
++    SubW = SubH = 0;
++    if (sw > 0 && sh > 0 && sw <= displayW && sh <= displayH && (sw != renderW || sh != renderH))
++    {
++        LOG_INFO("{0}: render size {1}x{2} from the subrect (feature made for {3}x{4})", who, sw, sh, renderW, renderH);
++        renderW = sw;
++        renderH = sh;
++    }
++}
++
+ // While the FFX backend makes its context with FSR 4 INT8 forced on a GPU that is not AMD, the DXGI adapter reads as an
+ // RDNA3 card (Dxgi_Spoofing.cpp): the FSR 4.1 SDK upscaler gives its INT8 model to AMD only and falls back to FSR 3.1
+ inline bool AmdForFfx = false;
+diff --git a/OptiScaler/upscalers/sgsr2/SGSR2Feature_Dx12.cpp b/OptiScaler/upscalers/sgsr2/SGSR2Feature_Dx12.cpp
+index f00ef839..e6331c72 100644
+--- a/OptiScaler/upscalers/sgsr2/SGSR2Feature_Dx12.cpp
++++ b/OptiScaler/upscalers/sgsr2/SGSR2Feature_Dx12.cpp
+@@ -3,6 +3,7 @@
+ #include "SGSR2_Shaders.h"
+ 
+ #include <Config.h>
++#include <upscalers/sgsr3/VelaLive.h>
+ #include <Util.h>
+ #include <shaders/Shader_Common.h>
+ #include <MathUtils.h>
+@@ -711,6 +712,9 @@ bool SGSR2FeatureDx12::InitInternal(ID3D12GraphicsCommandList* InCommandList, NV
+         return false;
+     }
+ 
++    // Vela live (VelaLive.h): re-created by a live model or ratio change, SGSR 2 takes the size the game draws now
++    VelaLive::TakeSubrect("SGSR2", _renderWidth, _renderHeight, DisplayWidth(), DisplayHeight());
++
+     // Target size is the backend's responsibility -- it is still zero here.
+     // Output scaling renders at a multiple of display size and downsamples later.
+     if (Config::Instance()->OutputScalingEnabled.value_or_default() &&

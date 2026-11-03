@@ -1,0 +1,222 @@
+diff --git a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+index 10670cd6..f225f79e 100644
+--- a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
++++ b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+@@ -1031,17 +1031,20 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
+         struct VelaHandle
+         {
+             VelaLive::Model model = VelaLive::Model::Unset;
++            int lossy = 1;
+             int tries = 0;
+         };
+         static ankerl::unordered_dense::map<unsigned int, VelaHandle> velaHandles;
+-        const VelaLive::Model m = VelaLive::Poll().model;
++        const VelaLive::Values& lv = VelaLive::Poll();
++        const VelaLive::Model m = lv.model;
++        const int lossy = m == VelaLive::Model::Fsr4Lite ? lv.lossy : 1;
+         const Upscaler want = m == VelaLive::Model::Sgsr2   ? Upscaler::SGSR2
+                               : m == VelaLive::Model::Unset ? cfg.Dx12Upscaler.value_or_default()
+                                                             : Upscaler::SGSR3;
+         const bool seen = velaHandles.contains(handleId);
+         auto& h = velaHandles[handleId];
+         bool change = false;
+-        if (seen && h.model != m)
++        if (seen && (h.model != m || h.lossy != lossy))
+         {
+             h.tries = 0;
+             change = true;  // the panel changed the model: Vela AI <-> P2b <-> SR need a re-create on the same backend
+@@ -1050,6 +1053,7 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
+                  (m != VelaLive::Model::Unset || seen))
+             change = true;  // a new handle, or a backend change that did not take yet
+         h.model = m;
++        h.lossy = lossy;
+         if (change)
+         {
+             h.tries++;
+diff --git a/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h b/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
+index 32e2aada..805ac46a 100644
+--- a/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
++++ b/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
+@@ -84,6 +84,14 @@ struct DeviceFeatures
+     ffxApiHeader header;
+     uint32_t enabledFlags, apiVersion, queueFamilyIndex;
+ };
++// Vela 0.7.0: FSR 4.1 Lite lossy mode, the network every N-th frame (N > 1); a provider that does not know it refuses
++// the context (only sent for Lite)
++struct VelaLossy
++{
++    ffxApiHeader header;
++    uint32_t networkEvery;
++};
++constexpr ffxStructType_t kVelaLossy = 0x56454C414C535931ull;  // "VELALSY1"
+ using PfnCreate = ffxReturnCode_t (*)(ffxContext*, ffxApiHeader*, const void*);
+ using PfnDestroy = ffxReturnCode_t (*)(ffxContext*, const void*);
+ using PfnDispatch = ffxReturnCode_t (*)(ffxContext*, const ffxApiHeader*);
+@@ -96,6 +104,7 @@ constexpr uint32_t kUsageUav = 1u << 1, kUsageDepth = 1u << 2, kUsageStencil = 1
+ constexpr uint32_t kStateUav = 1u << 1, kStateComputeRead = 1u << 2;
+ // provider version ids (fsr4vk provider/ffx_vk_provider.cpp)
+ constexpr uint64_t kFsr411 = (0xF5A5CA1Eull << 32) | ((4ull << 22) | (1ull << 12) | 1ull);
++constexpr uint64_t kFsr412Lite = (0xF5A5CA1Eull << 32) | ((4ull << 22) | (1ull << 12) | 2ull);  // 0xF5A5CA1E01001002
+ constexpr uint64_t kFsr402 = (0xF5A5CA1Eull << 32) | ((4ull << 22) | (0ull << 12) | 2ull);
+ 
+ // FfxApiSurfaceFormat values (ffx_api_types.h order): UNKNOWN 0, R32G32B32A32_TYPELESS 1, R32G32B32A32_UINT 2,
+@@ -130,9 +139,11 @@ class Fsr4VkBridge
+     };
+ 
+     bool Init(ID3D12Device* device, uint32_t rw, uint32_t rh, uint32_t dw, uint32_t dh, bool depthInverted, bool hdr,
+-              bool lowResMv, bool jitteredMv)
++              bool lowResMv, bool jitteredMv, bool lite = false, uint32_t networkEvery = 1)
+     {
+         Release();
++        _lite = lite;
++        _every = lite ? std::max(1u, networkEvery) : 1u;
+         _rw = rw;
+         _rh = rh;
+         _dw = dw;
+@@ -215,7 +226,10 @@ class Fsr4VkBridge
+         // VELA_FSR4_VER=402: FSR 4.0.2 (15 passes) instead of 4.1.1 -- A/B of the two models' cost
+         const char* ver = std::getenv("VELA_FSR4_VER");
+         _v402 = ver != nullptr && std::strcmp(ver, "402") == 0;
+-        ov.versionId = _v402 ? Fsr4Vk::kFsr402 : Fsr4Vk::kFsr411;
++        ov.versionId = _lite ? Fsr4Vk::kFsr412Lite : _v402 ? Fsr4Vk::kFsr402 : Fsr4Vk::kFsr411;
++        Fsr4Vk::VelaLossy lossy {};
++        lossy.header.type = Fsr4Vk::kVelaLossy;
++        lossy.networkEvery = _every;
+         // Turnip has one queue family; vkd3d-proton records the game's direct queue on it
+         Fsr4Vk::DeviceFeatures df {};
+         df.header.type = Fsr4Vk::kDeviceFeatures;
+@@ -223,17 +237,20 @@ class Fsr4VkBridge
+         c.header.pNext = &b.header;
+         b.header.pNext = &ov.header;
+         ov.header.pNext = &df.header;
++        if (_lite && _every > 1)
++            df.header.pNext = &lossy.header;
+         const auto r = _create(&_ctx, &c.header, nullptr);
+         if (r != 0 || !_ctx)
+         {
+-            LOG_ERROR("Vela FSR 4 VK: ffxCreateContext failed ({}) for {}x{} -> {}x{}", r, rw, rh, dw, dh);
++            LOG_ERROR("Vela FSR 4 VK: ffxCreateContext failed ({}) for {}x{} -> {}x{}{}", r, rw, rh, dw, dh,
++                      _lite ? " (FSR 4.1.2 Lite: this provider has no Lite path)" : "");
+             _ctx = nullptr;
+             return false;
+         }
+         if (!MakeFlush(device))
+             return false;
+-        LOG_INFO("Vela FSR 4 VK: FSR {} VK INT8 context {}x{} -> {}x{} (hdr {})", _v402 ? "4.0.2" : "4.1.1", rw, rh, dw,
+-                 dh, hdr);
++        LOG_INFO("Vela FSR 4 VK: FSR {} VK INT8 context {}x{} -> {}x{} (hdr {}, network every {} frames)",
++                 _lite ? "4.1.2 Lite" : _v402 ? "4.0.2" : "4.1.1", rw, rh, dw, dh, hdr, _every);
+         _ready = true;
+         return true;
+     }
+@@ -474,4 +491,6 @@ class Fsr4VkBridge
+     int _failLogged = 0;
+     bool _ready = false;
+     bool _v402 = false;
++    bool _lite = false;
++    uint32_t _every = 1;
+ };
+diff --git a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
+index f86a85ae..1984f21c 100644
+--- a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
++++ b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
+@@ -302,14 +302,16 @@ bool SGSR3FeatureDx12::CreatePipelines(ID3D12Device* device)
+     // Vela live: the panel's model wins over the launch options (VelaLive.h)
+     if (const VelaLive::Model lm = VelaLive::Poll(true).model; !_abMode && lm != VelaLive::Model::Unset)
+     {
+-        if (lm == VelaLive::Model::Ai || lm == VelaLive::Model::P2b || lm == VelaLive::Model::Fsr4)
++        if (lm == VelaLive::Model::Ai || lm == VelaLive::Model::P2b || lm == VelaLive::Model::Fsr4 ||
++            lm == VelaLive::Model::Fsr4Lite)
+             _fixedMode = Mode::Student;
+         else if (lm == VelaLive::Model::Sr)
+             _fixedMode = Mode::V1Fast;
+         LOG_INFO("SGSR3: Vela live model {0}", VelaLive::ModelName(lm));
+-        if (lm == VelaLive::Model::Fsr4 &&
++        if ((lm == VelaLive::Model::Fsr4 || lm == VelaLive::Model::Fsr4Lite) &&
+             !_fsr4.Init(device, RenderWidth(), RenderHeight(), TargetWidth(), TargetHeight(), DepthInverted(), IsHdr(),
+-                        LowResMV(), JitteredMV()))
++                        LowResMV(), JitteredMV(), lm == VelaLive::Model::Fsr4Lite,
++                        (uint32_t) VelaLive::St().cur.lossy))
+             LOG_WARN("SGSR3: FSR 4 VK is not available here; Vela AI instead");
+     }
+ 
+diff --git a/OptiScaler/upscalers/sgsr3/VelaLive.h b/OptiScaler/upscalers/sgsr3/VelaLive.h
+index 6c4d8264..cf6b35b9 100644
+--- a/OptiScaler/upscalers/sgsr3/VelaLive.h
++++ b/OptiScaler/upscalers/sgsr3/VelaLive.h
+@@ -2,9 +2,12 @@
+ // Vela live settings (Vela plugin 0.5.0): the Decky panel writes /tmp/vela-live/<appid>.ini (Z:\tmp\... in Wine) and
+ // the running game picks it up without a restart. One "key=value" per line; a key that is absent keeps what the
+ // launch options / OptiScaler.ini say:
+-//   model=ai|p2b|sr|sgsr2|fsr4  Vela AI (the INT8 recipe when the device has it), Vela AI on the fp16 P2b recipe,
++//   model=ai|p2b|sr|sgsr2|fsr4|fsr4lite  Vela AI (the INT8 recipe when the device has it), Vela AI on the fp16 P2b recipe,
+ //                          Vela SR, OptiScaler's SGSR 2, or FSR 4.1.1 VK INT8 (fsr4vk provider inside SGSR 3, Fsr4VkBridge.h;
+-//                          Vela AI when it cannot run); a change re-creates the upscaler (NVNGX_DLSS_Dx12.cpp)
++//                          Vela AI when it cannot run); fsr4lite = FSR 4.1.2 Lite on the same provider (0.7.0);
++//                          a change re-creates the upscaler (NVNGX_DLSS_Dx12.cpp)
++//   lossy=<N>           FSR 4.1 Lite: the network every N-th frame (1 = every frame, exact; 2..8 lossy); a change
++//                       re-creates the upscaler
+ //   ratio=<r>|game      render size = display / r through the DLSS optimal-settings answer; "game" = the game's own
+ //   amax=<a>            Vela AI: the current sample's weight cap, 0 = none
+ //   alphak=<k>          Vela AI: the nearest current sample damped by k (0.25..1)
+@@ -17,6 +20,7 @@
+ 
+ #include <cmath>
+ #include <cstdio>
++#include <algorithm>
+ #include <cstdlib>
+ #include <optional>
+ #include <string>
+@@ -30,7 +34,8 @@ enum class Model
+     P2b,
+     Sr,
+     Sgsr2,
+-    Fsr4
++    Fsr4,
++    Fsr4Lite
+ };
+ 
+ struct Values
+@@ -42,11 +47,12 @@ struct Values
+     float mk = -1.0f;
+     float fresh = -1.0f;
+     int sq = -1, ncap = -1, disocc = -1;
++    int lossy = 1;  // FSR 4.1 Lite: network every N-th frame
+ };
+ 
+ inline const char* ModelName(Model m)
+ {
+-    return m == Model::Ai ? "ai" : m == Model::P2b ? "p2b" : m == Model::Sr ? "sr" : m == Model::Sgsr2 ? "sgsr2" : m == Model::Fsr4 ? "fsr4" : "-";
++    return m == Model::Ai ? "ai" : m == Model::P2b ? "p2b" : m == Model::Sr ? "sr" : m == Model::Sgsr2 ? "sgsr2" : m == Model::Fsr4 ? "fsr4" : m == Model::Fsr4Lite ? "fsr4lite" : "-";
+ }
+ 
+ inline std::string Path()
+@@ -89,6 +95,7 @@ inline Values Parse(const std::string& text)
+                       : s == "sr"    ? Model::Sr
+                       : s == "sgsr2" ? Model::Sgsr2
+                       : s == "fsr4"  ? Model::Fsr4
++                      : s == "fsr4lite" ? Model::Fsr4Lite
+                                      : Model::Unset;
+         else if (k == "ratio")
+             v.ratio = s == "game" ? 0.0f : (f >= 1.0f && f <= 6.0f ? f : -1.0f);
+@@ -106,6 +113,8 @@ inline Values Parse(const std::string& text)
+             v.ncap = s == "1";
+         else if (k == "disocc")
+             v.disocc = s == "1";
++        else if (k == "lossy")
++            v.lossy = std::max(1, std::min(atoi(s.c_str()), 8));
+     }
+     return v;
+ }
+@@ -185,9 +194,9 @@ inline const Values& Poll(bool force = false)
+     s.text = text;
+     s.cur = Parse(text);
+     ApplyRatio(s.cur);
+-    LOG_INFO("Vela live ({0}): model {1} ratio {2} amax {3} alphak {4} mk {5} fresh {6} sq {7} ncap {8} disocc {9}",
++    LOG_INFO("Vela live ({0}): model {1} ratio {2} amax {3} alphak {4} mk {5} fresh {6} sq {7} ncap {8} disocc {9} lossy {10}",
+              text.empty() ? "no file, launch settings" : p, ModelName(s.cur.model), s.cur.ratio, s.cur.amax,
+-             s.cur.alphaK, s.cur.mk, s.cur.fresh, s.cur.sq, s.cur.ncap, s.cur.disocc);
++             s.cur.alphaK, s.cur.mk, s.cur.fresh, s.cur.sq, s.cur.ncap, s.cur.disocc, s.cur.lossy);
+     return s.cur;
+ }
+ 

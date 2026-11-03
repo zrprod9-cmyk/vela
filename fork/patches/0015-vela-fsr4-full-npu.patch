@@ -1,0 +1,29 @@
+Vela 0.8.3: the live key npu also for the full FSR 4.1.1 model (FSR 4 VK INT8, not 4.0.2):
+its network (passes 2..24) runs on the Hexagon NPU, graph nf4_exact, through VK_LAYER_VELA_npu (the provider runs async for any
+non-zero mode). The bridge sends VelaNpu for 4.1.1 too; "Vela NPU: off" after an NPU line for either model.
+--- a/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
++++ b/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
+@@ -152,7 +152,8 @@
+         Release();
+         _lite = lite;
+         _every = lite ? std::max(1u, networkEvery) : 1u;
+-        _npu = lite && _every == 1 ? std::min(npuMode, 2u) : 0u;
++        // Vela 0.8.3: also the full 4.1.1 model (the provider ignores it for 4.0.2)
++        _npu = !lite || _every == 1 ? std::min(npuMode, 2u) : 0u;
+         _rw = rw;
+         _rh = rh;
+         _dw = dw;
+@@ -272,3 +273,3 @@
+         // apps_npu/docs/11-npu-log-lines.md F3: the provider prints F1/F2/F4 itself (Message below, verbatim)
+-        if (_lite && _npu == 0 && NpuShown())
++        if (_npu == 0 && NpuShown())
+         {
+--- a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
++++ b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+@@ -1040,4 +1040,5 @@
+         const VelaLive::Model m = lv.model;
+         const int lossy = m == VelaLive::Model::Fsr4Lite ? lv.lossy : 1;
+-        const int npu = m == VelaLive::Model::Fsr4Lite ? lv.npu : 0;
++        // Vela 0.8.3: the NPU also for the full FSR 4.1.1 model (graph nf4_exact)
++        const int npu = m == VelaLive::Model::Fsr4Lite || m == VelaLive::Model::Fsr4 ? lv.npu : 0;
+         const Upscaler want = m == VelaLive::Model::Sgsr2   ? Upscaler::SGSR2

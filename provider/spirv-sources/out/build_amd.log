@@ -1,0 +1,70 @@
+debconf: delaying package configuration, since apt-utils is not installed
+extracted 13 modules and the Lite weights
+/tmp/xf.0: 0 OpSDot rewritten
+/tmp/xf.1: 0 z reads -> 0
+/tmp/xf.0: 0 OpSDot rewritten
+/tmp/xf.1: 0 z reads -> 0
+/tmp/xf.0: 0 OpSDot rewritten
+/tmp/xf.1: 0 z reads -> 0
+/tmp/xf.0: 0 OpSDot rewritten
+/tmp/xf.1: 0 z reads -> 0
+/tmp/xf.0: 0 OpSDot rewritten
+/tmp/xf.1: 0 z reads -> 0
+/tmp/xf.0: 0 OpSDot rewritten
+/tmp/xf.1: 0 z reads -> 0
+/w/lite/pre_lds.comp
+VAL_OK 0000
+/w/lite/pre_r2c.comp
+VAL_OK pre_r2c
+/w/lite/b1_0009.comp
+/tmp/0009.g.asm: 832 OpSDot rewritten
+/tmp/0009.g1: 0 z reads -> 0
+zforce: 1 loads patched, builtins ['gl_LocalInvocationID', 'gl_WorkGroupID']
+no InitializerBuffer
+cres: arrays 0 loads resolved 0 dynamic access chains left 0
+kfold: terms folded 832 chain values 1664 materialized 191 operand rewrites 191
+0009 done
+/w/lite/k2cl.comp
+/tmp/0013.g.asm: 128 OpSDot rewritten
+/tmp/0013.g1: 0 z reads -> 0
+zforce: 1 loads patched, builtins ['gl_LocalInvocationID', 'gl_WorkGroupID']
+no InitializerBuffer
+cres: arrays 128 loads resolved 128 dynamic access chains left 0
+kfold: terms folded 128 chain values 256 materialized 32 operand rewrites 32
+0013 done
+wrote /tmp/c0002.comp 1010 lines, blocks 8
+wrote /tmp/c0005.comp 1852 lines, blocks 14
+wrote /tmp/c0007.comp 2493 lines, blocks 22
+gen_fu ok
+/tmp/fu/fu_pre.comp
+VAL_OK fu_pre
+/tmp/fu/fu_k1.comp
+/tmp/0009.g.asm: 832 OpSDot rewritten
+/tmp/0009.g1: 0 z reads -> 0
+zforce: 2 loads patched, builtins ['gl_LocalInvocationID', 'gl_WorkGroupID']
+no InitializerBuffer
+cres: arrays 0 loads resolved 0 dynamic access chains left 0
+kfold: terms folded 832 chain values 1664 materialized 191 operand rewrites 191
+0009 done
+/tmp/fu/fu_k1s.comp
+/tmp/0009.g.asm: 832 OpSDot rewritten
+/tmp/0009.g1: 0 z reads -> 0
+zforce: 2 loads patched, builtins ['gl_LocalInvocationID', 'gl_WorkGroupID']
+no InitializerBuffer
+cres: arrays 0 loads resolved 0 dynamic access chains left 0
+kfold: terms folded 832 chain values 1664 materialized 191 operand rewrites 191
+0009 done
+/tmp/fu/fu_k1d.comp
+/tmp/0009.g.asm: 832 OpSDot rewritten
+/tmp/0009.g1: 0 z reads -> 0
+zforce: 1 loads patched, builtins ['gl_LocalInvocationID', 'gl_WorkGroupID']
+no InitializerBuffer
+cres: arrays 0 loads resolved 0 dynamic access chains left 0
+kfold: terms folded 832 chain values 1664 materialized 191 operand rewrites 191
+0009 done
+vela-fast-spv.hpp IDENTICAL
+fsr4fu-spv.hpp IDENTICAL
+fsr412lite-blobs.hpp IDENTICAL
+13ca211ae1a423de362b3db3f7e7e6e8  /w/out/amd/fsr412lite-blobs.hpp
+a709afab37fea54de6c76d0ff3cf7762  /w/out/amd/fsr4fu-spv.hpp
+07346e891fae3e936bada1ec66e48b65  /w/out/amd/vela-fast-spv.hpp

@@ -1,0 +1,1 @@
+{ global: vl_GetInstanceProcAddr; vl_GetDeviceProcAddr; vkNegotiateLoaderLayerInterfaceVersion; local: *; };

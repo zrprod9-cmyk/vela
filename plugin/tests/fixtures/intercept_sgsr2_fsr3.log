@@ -1,0 +1,11 @@
+[20:43:17.215] vela: live settings file Z:\tmp\vela-live\2050650.ini
+[20:43:17.216] vela: live (Z:\tmp\vela-live\2050650.ini): model sgsr2 lossy 1 npu 0
+[20:43:29.080] vela: calibration ok: layout fsr2.0+re16 render 640x360 (texture 640x360) display 1920x1080 jitter (-0.1562, 0.4630) mvScale (1.0000, 1.0000) (measured) preExposure 1.000 tan(hfov/2) 0.364 phases 72
+[20:43:29.287] vela: model sgsr2 runs 640x360 -> 1920x1080
+[20:43:31.662] fps 71.0 (presents 710 in 10.0 s; frames by Vela 229), SGSR 2 GPU 1.61 ms
+[20:43:41.670] fps 79.6 (presents 797 in 10.0 s; frames by Vela 797), SGSR 2 GPU 1.92 ms
+[20:43:51.684] fps 93.5 (presents 936 in 10.0 s; frames by Vela 936), SGSR 2 GPU 1.63 ms
+[20:44:14.140] vela: live (Z:\tmp\vela-live\2050650.ini): model fsr3 lossy 1 npu 0
+[20:44:14.305] vela: model fsr3 runs 640x360 -> 1920x1080
+[20:44:21.757] fps 35.9 (presents 360 in 10.0 s; frames by Vela 360), FSR 3.1
+[20:44:31.783] fps 36.3 (presents 364 in 10.0 s; frames by Vela 364), FSR 3.1

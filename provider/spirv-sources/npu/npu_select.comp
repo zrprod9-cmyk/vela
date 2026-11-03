@@ -1,0 +1,13 @@
+#version 450
+// GPU-timeline fallback. Reads the marker slot(s) the layer acked (or left as the CMD payload) and writes the
+// indirect dispatch arguments: ack OK + right seq -> GPU network passes 3..9 get 0 groups, unpack gets its groups;
+// anything else -> the GPU network runs, unpack gets 0 groups. So a frame never shows without a network result.
+layout(local_size_x = 1) in;
+layout(set = 0, binding = 4, std430) readonly buffer M { uint w[]; } mk;
+layout(set = 0, binding = 5, std430) readonly buffer F { uint a[]; } full;
+layout(set = 0, binding = 6, std430) writeonly buffer L { uint a[]; } live;
+layout(push_constant) uniform P { uint kick, wait, seqLo, seqHi; } pc;
+bool ok(uint b) { return mk.w[b] == 0x414C4556u && mk.w[b + 1u] == 0x314B4356u && mk.w[b + 3u] == 0u && mk.w[b + 4u] == pc.seqLo && mk.w[b + 5u] == pc.seqHi; }
+void main() { bool n = ok(pc.kick) && (pc.wait == 0xffffffffu || ok(pc.wait));
+  for (uint i = 0u; i < 24u; i++) live.a[i] = ((i < 21u) != n) ? full.a[i] : 0u;
+  live.a[24] = n ? 1u : 0u; }

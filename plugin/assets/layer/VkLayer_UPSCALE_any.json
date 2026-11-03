@@ -1,0 +1,21 @@
+{
+  "file_format_version": "1.2.0",
+  "layer": {
+    "name": "VK_LAYER_UPSCALE_any",
+    "type": "GLOBAL",
+    "library_path": "./libVkLayer_UPSCALE_any.so",
+    "api_version": "1.4.303",
+    "implementation_version": "1",
+    "description": "Upscale plugin: the game's swapchain at the panel resolution, its frame upscaled by S-any",
+    "functions": {
+      "vkGetInstanceProcAddr": "tup_GetInstanceProcAddr",
+      "vkGetDeviceProcAddr": "tup_GetDeviceProcAddr"
+    },
+    "enable_environment": {
+      "UPSCALE_ANY": "1"
+    },
+    "disable_environment": {
+      "DISABLE_UPSCALE_ANY": "1"
+    }
+  }
+}

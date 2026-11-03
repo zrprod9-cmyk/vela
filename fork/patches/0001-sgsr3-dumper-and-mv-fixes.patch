@@ -1,0 +1,538 @@
+diff --git a/OptiScaler/upscalers/sgsr2/SGSR2Dumper.cpp b/OptiScaler/upscalers/sgsr2/SGSR2Dumper.cpp
+new file mode 100644
+index 00000000..7a1557d2
+--- /dev/null
++++ b/OptiScaler/upscalers/sgsr2/SGSR2Dumper.cpp
+@@ -0,0 +1,243 @@
++#include "pch.h"
++#include "SGSR2Dumper.h"
++
++#include <algorithm>
++#include <cstdio>
++
++static const char* TriggerPath = "Z:\\tmp\\sgsr3_dump";
++static const char* DumpRoot = "Z:\\tmp\\sgsr3dump";
++
++void SGSR2Dumper::BeginFrame(ID3D12Device* device, long frame)
++{
++    _device = device;
++    _frame = frame;
++    FlushReady(false);
++
++    if (_remaining > 0 || ++_sinceCheck < 30)
++        return;
++    _sinceCheck = 0;
++
++    if (GetFileAttributesA(TriggerPath) == INVALID_FILE_ATTRIBUTES)
++        return;
++
++    int count = 32;
++    if (FILE* f = fopen(TriggerPath, "r"))
++    {
++        int n = 0;
++        if (fscanf(f, "%d", &n) == 1 && n > 0)
++            count = std::min(n, 64);
++        fclose(f);
++    }
++    DeleteFileA(TriggerPath);
++
++    CreateDirectoryA(DumpRoot, nullptr);
++    char dir[256];
++    snprintf(dir, sizeof(dir), "%s\\%llu", DumpRoot, (unsigned long long) GetTickCount64());
++    CreateDirectoryA(dir, nullptr);
++    _dir = dir;
++    _remaining = count;
++    LOG_INFO("SGSR3 dump: {0} frames from frame {1} into {2}", count, frame, _dir);
++}
++
++void SGSR2Dumper::Capture(ID3D12GraphicsCommandList* cmd, const char* name, ID3D12Resource* res,
++                          D3D12_RESOURCE_STATES state, uint32_t cropW, uint32_t cropH)
++{
++    if (!Active() || res == nullptr || _device == nullptr)
++        return;
++
++    Slot& s = _slots[_slot];
++    if (s.pending)
++        Flush(s); // only reachable if frames were skipped; the GPU has had Slots frames to finish
++
++    auto desc = res->GetDesc();
++    Item* item = nullptr;
++    for (auto& it : s.items)
++        if (it.name == name)
++            item = &it;
++    if (item == nullptr)
++    {
++        s.items.push_back({});
++        item = &s.items.back();
++        item->name = name;
++    }
++
++    UINT64 bytes = 0, rowSize = 0;
++    UINT rows = 0;
++    _device->GetCopyableFootprints(&desc, 0, 1, 0, &item->footprint, &rows, &rowSize, &bytes);
++
++    if (item->buffer == nullptr || item->capacity < bytes)
++    {
++        if (item->buffer != nullptr)
++            item->buffer->Release();
++        item->buffer = nullptr;
++
++        D3D12_HEAP_PROPERTIES hp {};
++        hp.Type = D3D12_HEAP_TYPE_READBACK;
++        D3D12_RESOURCE_DESC rb {};
++        rb.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
++        rb.Width = bytes;
++        rb.Height = 1;
++        rb.DepthOrArraySize = 1;
++        rb.MipLevels = 1;
++        rb.SampleDesc.Count = 1;
++        rb.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
++        if (FAILED(_device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &rb, D3D12_RESOURCE_STATE_COPY_DEST,
++                                                    nullptr, IID_PPV_ARGS(&item->buffer))))
++        {
++            LOG_WARN("SGSR3 dump: readback allocation of {0} bytes for {1} failed", bytes, name);
++            item->capacity = 0;
++            return;
++        }
++        item->capacity = bytes;
++    }
++
++    item->resourceFormat = desc.Format;
++    item->cropW = std::min<uint32_t>(cropW, item->footprint.Footprint.Width);
++    item->cropH = std::min<uint32_t>(cropH, item->footprint.Footprint.Height);
++    item->used = true;
++
++    D3D12_RESOURCE_BARRIER b {};
++    b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
++    b.Transition.pResource = res;
++    b.Transition.StateBefore = state;
++    b.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
++    b.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
++    cmd->ResourceBarrier(1, &b);
++
++    D3D12_TEXTURE_COPY_LOCATION src {};
++    src.pResource = res;
++    src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
++    src.SubresourceIndex = 0; // depth plane for depth-stencil formats
++    D3D12_TEXTURE_COPY_LOCATION dst {};
++    dst.pResource = item->buffer;
++    dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
++    dst.PlacedFootprint = item->footprint;
++    cmd->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
++
++    std::swap(b.Transition.StateBefore, b.Transition.StateAfter);
++    cmd->ResourceBarrier(1, &b);
++}
++
++void SGSR2Dumper::EndFrame(const Meta& meta)
++{
++    if (!Active())
++        return;
++
++    Slot& s = _slots[_slot];
++    s.meta = meta;
++    s.pending = true;
++    _slot = (_slot + 1) % Slots;
++
++    if (--_remaining == 0)
++        LOG_INFO("SGSR3 dump: last frame {0} recorded", meta.frame);
++}
++
++void SGSR2Dumper::FlushReady(bool all)
++{
++    for (auto& s : _slots)
++        if (s.pending && (all || _frame >= s.meta.frame + (long) FlushDelay))
++            Flush(s);
++}
++
++void SGSR2Dumper::Flush(Slot& s)
++{
++    s.pending = false;
++    char path[512];
++    const Meta& m = s.meta;
++
++    snprintf(path, sizeof(path), "%s\\f%06ld.json", _dir.c_str(), m.frame);
++    FILE* js = fopen(path, "w");
++    if (js != nullptr)
++    {
++        fprintf(js,
++                "{\n  \"frame\": %ld,\n  \"render\": [%u, %u],\n  \"display\": [%u, %u],\n"
++                "  \"jitter\": [%.9g, %.9g],\n  \"mv_scale\": [%.9g, %.9g],\n  \"sgsr2_motion_scale\": [%.9g, %.9g],\n"
++                "  \"pre_exposure\": %.9g,\n  \"depth_inverted\": %d,\n  \"jittered_mv\": %d,\n  \"low_res_mv\": %d,\n"
++                "  \"auto_exposure\": %d,\n  \"hdr\": %d,\n  \"reset\": %d,\n  \"has_depth\": %d,\n"
++                "  \"mv_base\": [%u, %u],\n  \"color_base\": [%u, %u],\n  \"images\": {",
++                m.frame, m.renderW, m.renderH, m.displayW, m.displayH, m.jitterX, m.jitterY, m.mvScaleX, m.mvScaleY,
++                m.motionVectorScale[0], m.motionVectorScale[1], m.preExposure, m.depthInverted, m.jitteredMV,
++                m.lowResMV, m.autoExposure, m.hdr, m.reset, m.hasDepth, m.mvBaseX, m.mvBaseY, m.colorBaseX,
++                m.colorBaseY);
++    }
++
++    bool first = true;
++    for (auto& it : s.items)
++    {
++        if (!it.used || it.buffer == nullptr)
++            continue;
++        it.used = false;
++
++        const auto& fp = it.footprint;
++
++        void* mapped = nullptr;
++        if (FAILED(it.buffer->Map(0, nullptr, &mapped)) || mapped == nullptr)
++            continue;
++
++        // Texel size of the copied plane (R32_TYPELESS for D32S8's depth plane); RowPitch is padded, so it
++        // cannot be derived from the footprint.
++        uint32_t texel = 4;
++        switch (fp.Footprint.Format)
++        {
++        case DXGI_FORMAT_R16G16B16A16_FLOAT:
++        case DXGI_FORMAT_R16G16B16A16_TYPELESS:
++        case DXGI_FORMAT_R32G32_FLOAT:
++        case DXGI_FORMAT_R32G32_TYPELESS:
++        case DXGI_FORMAT_R32G8X24_TYPELESS:
++            texel = 8;
++            break;
++        case DXGI_FORMAT_R32G32B32A32_FLOAT:
++        case DXGI_FORMAT_R32G32B32A32_TYPELESS:
++            texel = 16;
++            break;
++        case DXGI_FORMAT_R16_FLOAT:
++        case DXGI_FORMAT_R16_TYPELESS:
++        case DXGI_FORMAT_R16_UNORM:
++            texel = 2;
++            break;
++        case DXGI_FORMAT_R8_UNORM:
++        case DXGI_FORMAT_R8_TYPELESS:
++            texel = 1;
++            break;
++        default:
++            texel = 4;
++            break;
++        }
++
++        snprintf(path, sizeof(path), "%s\\f%06ld_%s.bin", _dir.c_str(), m.frame, it.name.c_str());
++        if (FILE* f = fopen(path, "wb"))
++        {
++            const uint8_t* base = (const uint8_t*) mapped + fp.Offset;
++            for (uint32_t y = 0; y < it.cropH; y++)
++                fwrite(base + (uint64_t) y * fp.Footprint.RowPitch, 1, (size_t) it.cropW * texel, f);
++            fclose(f);
++        }
++
++        D3D12_RANGE noWrite { 0, 0 };
++        it.buffer->Unmap(0, &noWrite);
++
++        if (js != nullptr)
++            fprintf(js, "%s\n    \"%s\": {\"size\": [%u, %u], \"dxgi\": %d, \"plane_dxgi\": %d, \"texel_bytes\": %u}",
++                    first ? "" : ",", it.name.c_str(), it.cropW, it.cropH, (int) it.resourceFormat,
++                    (int) fp.Footprint.Format, texel);
++        first = false;
++    }
++
++    if (js != nullptr)
++    {
++        fprintf(js, "\n  }\n}\n");
++        fclose(js);
++    }
++}
++
++void SGSR2Dumper::Release()
++{
++    FlushReady(true);
++    for (auto& s : _slots)
++        for (auto& it : s.items)
++            if (it.buffer != nullptr)
++            {
++                it.buffer->Release();
++                it.buffer = nullptr;
++            }
++}
+diff --git a/OptiScaler/upscalers/sgsr2/SGSR2Dumper.h b/OptiScaler/upscalers/sgsr2/SGSR2Dumper.h
+new file mode 100644
+index 00000000..9cb32149
+--- /dev/null
++++ b/OptiScaler/upscalers/sgsr2/SGSR2Dumper.h
+@@ -0,0 +1,83 @@
++#pragma once
++
++#include <d3d12.h>
++
++#include <cstdint>
++#include <string>
++#include <vector>
++
++//============================================================================================================
++// Input dumper for the SGSR 3 test bench.
++//
++// `echo N > /tmp/sgsr3_dump` (N <= 64, default 32) dumps the next N consecutive frames: the game's colour,
++// depth and motion vectors exactly as handed to the upscaler, SGSR2's history output, and the per-frame
++// constants. The files land in /tmp/sgsr3dump/<tick>/ (Wine sees it as Z:\tmp\...):
++//
++//   fNNNNNN_<name>.bin   tightly packed rows of the cropped region, little-endian, raw DXGI texels
++//   fNNNNNN.json         sizes, DXGI formats, jitter, MV scale, flags, preExposure, reset
++//
++// Copies go into readback buffers on the game's command list; a buffer is read on the CPU only once its
++// frame is FlushDelay frames old, so nothing waits on the GPU. Writing does stall the game thread for the
++// duration of the dump, which is fine for a debug capture.
++//============================================================================================================
++
++class SGSR2Dumper
++{
++  public:
++    struct Meta
++    {
++        long frame = 0;
++        uint32_t renderW = 0, renderH = 0, displayW = 0, displayH = 0;
++        float jitterX = 0, jitterY = 0;
++        float mvScaleX = 1, mvScaleY = 1;           // NGX MV_Scale as given by the game
++        float motionVectorScale[2] = { 0, 0 };      // what SGSR2 was fed
++        float preExposure = 1;
++        bool depthInverted = false, jitteredMV = false, lowResMV = false, autoExposure = false, hdr = false;
++        bool reset = false, hasDepth = false;
++        unsigned int mvBaseX = 0, mvBaseY = 0, colorBaseX = 0, colorBaseY = 0;
++    };
++
++    // Polls the trigger file; call once per evaluated frame before Capture.
++    void BeginFrame(ID3D12Device* device, long frame);
++    bool Active() const { return _remaining > 0; }
++
++    // Records a copy of `res` (currently in `state`) into this frame's slot, cropped to cropW x cropH.
++    void Capture(ID3D12GraphicsCommandList* cmd, const char* name, ID3D12Resource* res, D3D12_RESOURCE_STATES state,
++                 uint32_t cropW, uint32_t cropH);
++
++    void EndFrame(const Meta& meta);
++    void Release();
++
++  private:
++    static constexpr uint32_t Slots = 8;
++    static constexpr uint32_t FlushDelay = 6; // > IFeature ring depth (4) + 2, as the velocity readback assumes
++
++    struct Item
++    {
++        std::string name;
++        ID3D12Resource* buffer = nullptr;
++        uint64_t capacity = 0;
++        D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint {};
++        DXGI_FORMAT resourceFormat = DXGI_FORMAT_UNKNOWN;
++        uint32_t cropW = 0, cropH = 0;
++        bool used = false;
++    };
++
++    struct Slot
++    {
++        std::vector<Item> items;
++        Meta meta;
++        bool pending = false;
++    };
++
++    ID3D12Device* _device = nullptr;
++    Slot _slots[Slots];
++    uint32_t _slot = 0;
++    long _frame = 0;
++    int _remaining = 0;
++    int _sinceCheck = 0;
++    std::string _dir;
++
++    void Flush(Slot& s);
++    void FlushReady(bool all);
++};
+diff --git a/OptiScaler/upscalers/sgsr2/SGSR2Feature.cpp b/OptiScaler/upscalers/sgsr2/SGSR2Feature.cpp
+index 094c356c..0d56e0f9 100644
+--- a/OptiScaler/upscalers/sgsr2/SGSR2Feature.cpp
++++ b/OptiScaler/upscalers/sgsr2/SGSR2Feature.cpp
+@@ -65,8 +65,16 @@ bool SGSR2Feature::UpdateSharedConstants(NVSDK_NGX_Parameter* InParameters)
+     // screen flow is radial and Y is exercised without needing a vertical
+     // camera move. Same walk, same save, detail retained in motion relative to
+     // a still frame: +2/h keeps 1.05, -2/h keeps 0.56.
+-    _constants.motionVectorScale[0] = -2.0f * mvScaleX / rw;
+-    _constants.motionVectorScale[1] = 2.0f * mvScaleY / rh;
++    //
++    // Without the low-res flag NGX motion vectors are display-resolution, and so
++    // are their units: measured on Bright Memory: Infinite (UE4, MV_Scale 1,1, a
++    // 1920x1080 velocity texture for 1279x720 rendering) the warp error is lowest
++    // at 0.65-0.75 x the render-pixel scale, i.e. render/display = 0.667. Dividing
++    // by the render size there overstated motion by 1.5x.
++    const float mvw = LowResMV() ? rw : (float) DisplayWidth();
++    const float mvh = LowResMV() ? rh : (float) DisplayHeight();
++    _constants.motionVectorScale[0] = -2.0f * mvScaleX / mvw;
++    _constants.motionVectorScale[1] = 2.0f * mvScaleY / mvh;
+ 
+     // Temporary tuning hook: lets the motion-vector convention be dialled in on
+     // a device without a rebuild. OPTI_SGSR2_MVX/MVY override the scale outright.
+diff --git a/OptiScaler/upscalers/sgsr2/SGSR2Feature.h b/OptiScaler/upscalers/sgsr2/SGSR2Feature.h
+index 39f3fb23..38075263 100644
+--- a/OptiScaler/upscalers/sgsr2/SGSR2Feature.h
++++ b/OptiScaler/upscalers/sgsr2/SGSR2Feature.h
+@@ -51,9 +51,13 @@ struct alignas(16) SGSR2Constants
+     // Zero when the game supplies no depth buffer. Depth only feeds the
+     // disocclusion test, so the pass degrades rather than failing.
+     uint32_t hasDepth;
++    // Size of the velocity texture region the vectors live in: the render size
++    // for low-res vectors, the texture size otherwise.
++    uint32_t mvSize[2];
++    uint32_t mvPad[2];
+ };
+ 
+-static_assert(sizeof(SGSR2Constants) == 160, "SGSR2Constants must match the HLSL cbuffer layout");
++static_assert(sizeof(SGSR2Constants) == 176, "SGSR2Constants must match the HLSL cbuffer layout");
+ 
+ class SGSR2Feature : public virtual IFeature
+ {
+diff --git a/OptiScaler/upscalers/sgsr2/SGSR2Feature_Dx12.cpp b/OptiScaler/upscalers/sgsr2/SGSR2Feature_Dx12.cpp
+index 80f36d7a..346249cf 100644
+--- a/OptiScaler/upscalers/sgsr2/SGSR2Feature_Dx12.cpp
++++ b/OptiScaler/upscalers/sgsr2/SGSR2Feature_Dx12.cpp
+@@ -815,6 +815,9 @@ bool SGSR2FeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList
+     {
+         auto vd = paramVelocity->GetDesc();
+ 
++        _constants.mvSize[0] = LowResMV() ? RenderWidth() : (uint32_t) vd.Width;
++        _constants.mvSize[1] = LowResMV() ? RenderHeight() : vd.Height;
++
+         // Depth may legitimately be absent; fall back to the render size so the
+         // value is well-formed even though the shader will not gather from it.
+         if (paramDepth != nullptr)
+@@ -938,6 +941,50 @@ bool SGSR2FeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList
+     if (_constants.debugMode == 5u)
+         DumpVelocity(InCommandList, paramVelocity);
+ 
++    _dumper.BeginFrame(Device, _frameCount);
++    SGSR2Dumper::Meta dumpMeta;
++    if (_dumper.Active())
++    {
++        const uint32_t rw = RenderWidth(), rh = RenderHeight();
++        const auto mvDesc = paramVelocity->GetDesc();
++        // Full-resolution motion vectors cover the whole display, so only low-res ones are cropped.
++        const uint32_t mvW = LowResMV() ? rw : (uint32_t) mvDesc.Width;
++        const uint32_t mvH = LowResMV() ? rh : mvDesc.Height;
++        _dumper.Capture(InCommandList, "color", paramColor, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, rw, rh);
++        if (paramDepth != nullptr)
++            _dumper.Capture(InCommandList, "depth", paramDepth, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, rw,
++                            rh);
++        _dumper.Capture(InCommandList, "mv", paramVelocity, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, mvW,
++                        mvH);
++        if (paramReactive != nullptr)
++            _dumper.Capture(InCommandList, "reactive", paramReactive, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
++                            rw, rh);
++
++        dumpMeta.frame = _frameCount;
++        dumpMeta.renderW = rw;
++        dumpMeta.renderH = rh;
++        dumpMeta.displayW = TargetWidth();
++        dumpMeta.displayH = TargetHeight();
++        dumpMeta.jitterX = _constants.jitterOffset[0];
++        dumpMeta.jitterY = _constants.jitterOffset[1];
++        InParameters->Get(NVSDK_NGX_Parameter_MV_Scale_X, &dumpMeta.mvScaleX);
++        InParameters->Get(NVSDK_NGX_Parameter_MV_Scale_Y, &dumpMeta.mvScaleY);
++        dumpMeta.motionVectorScale[0] = _constants.motionVectorScale[0];
++        dumpMeta.motionVectorScale[1] = _constants.motionVectorScale[1];
++        dumpMeta.preExposure = _constants.preExposure;
++        dumpMeta.depthInverted = DepthInverted();
++        dumpMeta.jitteredMV = JitteredMV();
++        dumpMeta.lowResMV = LowResMV();
++        dumpMeta.autoExposure = AutoExposure();
++        dumpMeta.hdr = IsHdr();
++        dumpMeta.reset = _constants.reset != 0;
++        dumpMeta.hasDepth = paramDepth != nullptr;
++        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_X, &dumpMeta.mvBaseX);
++        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_MV_SubrectBase_Y, &dumpMeta.mvBaseY);
++        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_X, &dumpMeta.colorBaseX);
++        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_Y, &dumpMeta.colorBaseY);
++    }
++
+     UpdateSameCamera(InCommandList);
+ 
+     ID3D12Resource* prevHistory = _history[_historyIndex];
+@@ -1056,6 +1103,14 @@ bool SGSR2FeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList
+             InCommandList->EndQuery(_timestampHeap, D3D12_QUERY_TYPE_TIMESTAMP, _ringIndex * TimestampsPerFrame + 3);
+     }
+ 
++    if (_dumper.Active())
++    {
++        // History carries the upscaled colour (alpha holds SGSR2's blend weight).
++        _dumper.Capture(InCommandList, "sgsr2_out", nextHistory, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, TargetWidth(),
++                        TargetHeight());
++        _dumper.EndFrame(dumpMeta);
++    }
++
+     const bool wroteDirect = (paramOutput->GetDesc().Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) != 0;
+ 
+     if (!wroteDirect)
+@@ -1170,6 +1225,7 @@ void SGSR2FeatureDx12::ReleaseResources()
+     release(_motionCounterReadback);
+     release(_clearHeap);
+     release(_mvReadback);
++    _dumper.Release();
+     release(_timestampHeap);
+     release(_timestampReadback);
+     release(_constantBuffer);
+diff --git a/OptiScaler/upscalers/sgsr2/SGSR2Feature_Dx12.h b/OptiScaler/upscalers/sgsr2/SGSR2Feature_Dx12.h
+index 40f97bfb..7a63d7c3 100644
+--- a/OptiScaler/upscalers/sgsr2/SGSR2Feature_Dx12.h
++++ b/OptiScaler/upscalers/sgsr2/SGSR2Feature_Dx12.h
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include "SGSR2Feature.h"
++#include "SGSR2Dumper.h"
+ #include <upscalers/IFeature_Dx12.h>
+ 
+ #include <d3d12.h>
+@@ -127,6 +128,9 @@ class SGSR2FeatureDx12 : public SGSR2Feature, public IFeature_Dx12
+ 
+     void DumpVelocity(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* velocity);
+ 
++    // /tmp/sgsr3_dump trigger: raw inputs + constants for the SGSR 3 bench, see SGSR2Dumper.h.
++    SGSR2Dumper _dumper;
++
+     bool CreatePipelines(ID3D12Device* device);
+     bool CreateResources(ID3D12Device* device);
+     void ReleaseResources();
+diff --git a/OptiScaler/upscalers/sgsr2/SGSR2Feature_Vk.cpp b/OptiScaler/upscalers/sgsr2/SGSR2Feature_Vk.cpp
+index 9be3d566..78834f65 100644
+--- a/OptiScaler/upscalers/sgsr2/SGSR2Feature_Vk.cpp
++++ b/OptiScaler/upscalers/sgsr2/SGSR2Feature_Vk.cpp
+@@ -418,6 +418,10 @@ bool SGSR2FeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Par
+     }
+ 
+     _constants.hasDepth = (paramDepth != nullptr) ? 1u : 0u;
++    // The precompiled SPIR-V predates mvSize and still loads at the render pixel,
++    // so keep the render size here until it is regenerated.
++    _constants.mvSize[0] = RenderWidth();
++    _constants.mvSize[1] = RenderHeight();
+     if (paramDepth != nullptr)
+     {
+         _constants.depthSize[0] = paramDepth->Resource.ImageViewInfo.Width;
+diff --git a/OptiScaler/upscalers/sgsr2/SGSR2_Shaders.h b/OptiScaler/upscalers/sgsr2/SGSR2_Shaders.h
+index 3acf7e7f..85edc282 100644
+--- a/OptiScaler/upscalers/sgsr2/SGSR2_Shaders.h
++++ b/OptiScaler/upscalers/sgsr2/SGSR2_Shaders.h
+@@ -76,9 +76,11 @@
+     "    uint2  depthSize;\n"                                                                                           \
+     "    float  reactiveStrength;\n"                                                                                    \
+     "    uint   hasDepth;\n"                                                                                          \
++    "    uint2  mvSize;\n"                                                                                            \
++    "    uint2  mvPad;\n"                                                                                             \
+     "};\n"                                                                                                             \
+     "#ifdef VK_MODE\n"                                                                                                \
+-    "[[vk::binding(1, 0)]]\n"                                                                                         \
++    "[[vk::binding(1, 0)]]\n"                                                                                       \
+     "#endif\n"                                                                                                        \
+     "SamplerState PointClamp  : register(s0);\n"                                                                       \
+     "#ifdef VK_MODE\n"                                                                                                \
+@@ -243,7 +245,14 @@ void CSMain(uint3 tid : SV_DispatchThreadID)
+     // bounds and returns zero -- which is why motion vectors read as zero in
+     // every game, in every SRV slot, for any resource bound. InputColor.Load
+     // escaped it only because it already used InputPos.
+-    float2 rawMv = InputVelocity.Load(int3(InputPos, 0)).xy;
++    // Display-resolution motion vectors (NGX without the low-res flag) cover the
++    // whole output, so the texel for this render pixel is at the scaled position;
++    // loading at InputPos read the top-left render-sized corner of the field.
++    // Integer maths only: converting InputPos to float here made Wine's HLSL
++    // compiler emit the float-bitcast index described above for every Load that
++    // uses InputPos, and the whole output went black.
++    uint2 mvPos = (InputPos * mvSize + (mvSize >> 1)) / renderSize;
++    float2 rawMv = InputVelocity.Load(int3(mvPos, 0)).xy;
+ 
+     float2 motion = rawMv * motionVectorScale;
+ 

@@ -1,0 +1,559 @@
+diff --git a/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h b/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
+index 11e761f2..ab865345 100644
+--- a/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
++++ b/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
+@@ -13,6 +13,7 @@
+ 
+ #include <cstdint>
+ #include <cstring>
++#include <deque>
+ #include <filesystem>
+ #include <memory>
+ #include <string>
+@@ -123,6 +124,150 @@ constexpr uint64_t kFsr402 = (0xF5A5CA1Eull << 32) | ((4ull << 22) | (0ull << 12
+ // B8G8R8A8_UNORM 14, B8G8R8A8_SRGB 15, R11G11B10_FLOAT 16, R10G10B10A2_UNORM 17, R16G16_FLOAT 18, R16G16_UINT 19,
+ // R16G16_SINT 20, R16_FLOAT 21, R16_UINT 22, R16_UNORM 23, R16_SNORM 24, R8_UNORM 25, R8G8_UNORM 26, R8G8_UINT 27,
+ // R32_FLOAT 28, R9G9B9E5_SHAREDEXP 29 (checked against ffx_api_types.h of FidelityFX SDK 2.x)
++// Motion-vector pass shader mvprep.comp, SPIR-V (glslang 15.1 -V --target-env vulkan1.1, spirv-val OK);
++// 32x16 output pixels per workgroup (several pixels per invocation, fetches first); output identical to an 8x8-pixel-per-workgroup version
++static const uint32_t kMvPrepSpv[] = {
++    0x07230203u, 0x00010300u, 0x0008000bu, 0x000000c0u, 0x00000000u, 0x00020011u, 0x00000001u, 0x00020011u,
++    0x00000031u, 0x0006000bu, 0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu, 0x00000000u, 0x0003000eu,
++    0x00000000u, 0x00000001u, 0x0007000fu, 0x00000005u, 0x00000004u, 0x6e69616du, 0x00000000u, 0x00000043u,
++    0x0000004cu, 0x00060010u, 0x00000004u, 0x00000011u, 0x00000008u, 0x00000008u, 0x00000001u, 0x00030003u,
++    0x00000002u, 0x000001c2u, 0x00040005u, 0x00000004u, 0x6e69616du, 0x00000000u, 0x00050005u, 0x0000000au,
++    0x50637273u, 0x7628736fu, 0x003b3269u, 0x00030005u, 0x00000009u, 0x00000070u, 0x00050005u, 0x0000000eu,
++    0x65786970u, 0x3169286cu, 0x0000003bu, 0x00030005u, 0x0000000du, 0x00000069u, 0x00030005u, 0x00000011u,
++    0x00000071u, 0x00030005u, 0x00000015u, 0x00004350u, 0x00050006u, 0x00000015u, 0x00000000u, 0x7474696au,
++    0x00007265u, 0x00060006u, 0x00000015u, 0x00000001u, 0x646e6572u, 0x69537265u, 0x0000657au, 0x00060006u,
++    0x00000015u, 0x00000002u, 0x70736964u, 0x5379616cu, 0x00657a69u, 0x00050006u, 0x00000015u, 0x00000003u,
++    0x754d766du, 0x0000006cu, 0x00050006u, 0x00000015u, 0x00000004u, 0x636e6163u, 0x00006c65u, 0x00050006u,
++    0x00000015u, 0x00000005u, 0x4d637273u, 0x00007861u, 0x00050006u, 0x00000015u, 0x00000006u, 0x7a697372u,
++    0x00000065u, 0x00050006u, 0x00000015u, 0x00000007u, 0x70736964u, 0x0079616cu, 0x00030005u, 0x00000017u,
++    0x00006370u, 0x00030005u, 0x00000022u, 0x00000073u, 0x00060005u, 0x00000043u, 0x575f6c67u, 0x476b726fu,
++    0x70756f72u, 0x00004449u, 0x00080005u, 0x0000004cu, 0x4c5f6c67u, 0x6c61636fu, 0x6f766e49u, 0x69746163u,
++    0x44496e6fu, 0x00000000u, 0x00030005u, 0x0000005cu, 0x00000069u, 0x00030005u, 0x00000067u, 0x00000070u,
++    0x00030005u, 0x0000006eu, 0x00000069u, 0x00030005u, 0x00000078u, 0x0000006du, 0x00040005u, 0x0000007du,
++    0x4d637273u, 0x00000076u, 0x00030005u, 0x0000008au, 0x00000069u, 0x00040005u, 0x000000aau, 0x4d747364u,
++    0x00000076u, 0x00030047u, 0x00000015u, 0x00000002u, 0x00050048u, 0x00000015u, 0x00000000u, 0x00000023u,
++    0x00000000u, 0x00050048u, 0x00000015u, 0x00000001u, 0x00000023u, 0x00000008u, 0x00050048u, 0x00000015u,
++    0x00000002u, 0x00000023u, 0x00000010u, 0x00050048u, 0x00000015u, 0x00000003u, 0x00000023u, 0x00000018u,
++    0x00050048u, 0x00000015u, 0x00000004u, 0x00000023u, 0x00000020u, 0x00050048u, 0x00000015u, 0x00000005u,
++    0x00000023u, 0x00000028u, 0x00050048u, 0x00000015u, 0x00000006u, 0x00000023u, 0x00000030u, 0x00050048u,
++    0x00000015u, 0x00000007u, 0x00000023u, 0x00000038u, 0x00040047u, 0x00000043u, 0x0000000bu, 0x0000001au,
++    0x00040047u, 0x0000004cu, 0x0000000bu, 0x0000001bu, 0x00040047u, 0x0000007du, 0x00000021u, 0x00000000u,
++    0x00040047u, 0x0000007du, 0x00000022u, 0x00000000u, 0x00030047u, 0x000000aau, 0x00000019u, 0x00040047u,
++    0x000000aau, 0x00000021u, 0x00000001u, 0x00040047u, 0x000000aau, 0x00000022u, 0x00000000u, 0x00040047u,
++    0x000000bfu, 0x0000000bu, 0x00000019u, 0x00020013u, 0x00000002u, 0x00030021u, 0x00000003u, 0x00000002u,
++    0x00040015u, 0x00000006u, 0x00000020u, 0x00000001u, 0x00040017u, 0x00000007u, 0x00000006u, 0x00000002u,
++    0x00040021u, 0x00000008u, 0x00000007u, 0x00000007u, 0x00040021u, 0x0000000cu, 0x00000007u, 0x00000006u,
++    0x00040020u, 0x00000010u, 0x00000007u, 0x00000007u, 0x00030016u, 0x00000012u, 0x00000020u, 0x00040017u,
++    0x00000013u, 0x00000012u, 0x00000002u, 0x00040015u, 0x00000014u, 0x00000020u, 0x00000000u, 0x000a001eu,
++    0x00000015u, 0x00000013u, 0x00000013u, 0x00000013u, 0x00000013u, 0x00000013u, 0x00000007u, 0x00000007u,
++    0x00000014u, 0x00040020u, 0x00000016u, 0x00000009u, 0x00000015u, 0x0004003bu, 0x00000016u, 0x00000017u,
++    0x00000009u, 0x0004002bu, 0x00000006u, 0x00000018u, 0x00000007u, 0x00040020u, 0x00000019u, 0x00000009u,
++    0x00000014u, 0x0004002bu, 0x00000014u, 0x0000001cu, 0x00000000u, 0x00020014u, 0x0000001du, 0x00040020u,
++    0x00000021u, 0x00000007u, 0x00000013u, 0x0004002bu, 0x00000012u, 0x00000024u, 0x3f000000u, 0x0004002bu,
++    0x00000006u, 0x00000027u, 0x00000000u, 0x00040020u, 0x00000028u, 0x00000009u, 0x00000013u, 0x0004002bu,
++    0x00000006u, 0x0000002du, 0x00000001u, 0x0004002bu, 0x00000006u, 0x00000031u, 0x00000002u, 0x0005002cu,
++    0x00000007u, 0x00000038u, 0x00000027u, 0x00000027u, 0x0004002bu, 0x00000006u, 0x00000039u, 0x00000005u,
++    0x00040020u, 0x0000003au, 0x00000009u, 0x00000007u, 0x00040017u, 0x00000041u, 0x00000014u, 0x00000003u,
++    0x00040020u, 0x00000042u, 0x00000001u, 0x00000041u, 0x0004003bu, 0x00000042u, 0x00000043u, 0x00000001u,
++    0x00040017u, 0x00000044u, 0x00000014u, 0x00000002u, 0x0004002bu, 0x00000006u, 0x00000048u, 0x00000020u,
++    0x0004002bu, 0x00000006u, 0x00000049u, 0x00000010u, 0x0005002cu, 0x00000007u, 0x0000004au, 0x00000048u,
++    0x00000049u, 0x0004003bu, 0x00000042u, 0x0000004cu, 0x00000001u, 0x0004002bu, 0x00000006u, 0x00000051u,
++    0x00000004u, 0x0004002bu, 0x00000006u, 0x00000053u, 0x00000008u, 0x00040020u, 0x0000005bu, 0x00000007u,
++    0x00000006u, 0x0004002bu, 0x00000014u, 0x00000064u, 0x00000008u, 0x0004001cu, 0x00000065u, 0x00000007u,
++    0x00000064u, 0x00040020u, 0x00000066u, 0x00000007u, 0x00000065u, 0x0004001cu, 0x00000076u, 0x00000013u,
++    0x00000064u, 0x00040020u, 0x00000077u, 0x00000007u, 0x00000076u, 0x00090019u, 0x0000007au, 0x00000012u,
++    0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x0003001bu, 0x0000007bu,
++    0x0000007au, 0x00040020u, 0x0000007cu, 0x00000000u, 0x0000007bu, 0x0004003bu, 0x0000007cu, 0x0000007du,
++    0x00000000u, 0x00040017u, 0x00000084u, 0x00000012u, 0x00000004u, 0x0004002bu, 0x00000006u, 0x00000095u,
++    0x00000006u, 0x00040020u, 0x00000096u, 0x00000009u, 0x00000006u, 0x0004002bu, 0x00000014u, 0x0000009eu,
++    0x00000001u, 0x00090019u, 0x000000a8u, 0x00000012u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u,
++    0x00000002u, 0x00000007u, 0x00040020u, 0x000000a9u, 0x00000000u, 0x000000a8u, 0x0004003bu, 0x000000a9u,
++    0x000000aau, 0x00000000u, 0x0004002bu, 0x00000006u, 0x000000b2u, 0x00000003u, 0x0004002bu, 0x00000012u,
++    0x000000b9u, 0x00000000u, 0x0006002cu, 0x00000041u, 0x000000bfu, 0x00000064u, 0x00000064u, 0x0000009eu,
++    0x00050036u, 0x00000002u, 0x00000004u, 0x00000000u, 0x00000003u, 0x000200f8u, 0x00000005u, 0x0004003bu,
++    0x0000005bu, 0x0000005cu, 0x00000007u, 0x0004003bu, 0x00000066u, 0x00000067u, 0x00000007u, 0x0004003bu,
++    0x0000005bu, 0x0000006eu, 0x00000007u, 0x0004003bu, 0x00000077u, 0x00000078u, 0x00000007u, 0x0004003bu,
++    0x0000005bu, 0x0000008au, 0x00000007u, 0x0003003eu, 0x0000005cu, 0x00000027u, 0x000200f9u, 0x0000005du,
++    0x000200f8u, 0x0000005du, 0x000400f6u, 0x0000005fu, 0x00000060u, 0x00000000u, 0x000200f9u, 0x00000061u,
++    0x000200f8u, 0x00000061u, 0x0004003du, 0x00000006u, 0x00000062u, 0x0000005cu, 0x000500b1u, 0x0000001du,
++    0x00000063u, 0x00000062u, 0x00000053u, 0x000400fau, 0x00000063u, 0x0000005eu, 0x0000005fu, 0x000200f8u,
++    0x0000005eu, 0x0004003du, 0x00000006u, 0x00000068u, 0x0000005cu, 0x0004003du, 0x00000006u, 0x00000069u,
++    0x0000005cu, 0x00050039u, 0x00000007u, 0x0000006au, 0x0000000eu, 0x00000069u, 0x00050041u, 0x00000010u,
++    0x0000006bu, 0x00000067u, 0x00000068u, 0x0003003eu, 0x0000006bu, 0x0000006au, 0x000200f9u, 0x00000060u,
++    0x000200f8u, 0x00000060u, 0x0004003du, 0x00000006u, 0x0000006cu, 0x0000005cu, 0x00050080u, 0x00000006u,
++    0x0000006du, 0x0000006cu, 0x0000002du, 0x0003003eu, 0x0000005cu, 0x0000006du, 0x000200f9u, 0x0000005du,
++    0x000200f8u, 0x0000005fu, 0x0003003eu, 0x0000006eu, 0x00000027u, 0x000200f9u, 0x0000006fu, 0x000200f8u,
++    0x0000006fu, 0x000400f6u, 0x00000071u, 0x00000072u, 0x00000000u, 0x000200f9u, 0x00000073u, 0x000200f8u,
++    0x00000073u, 0x0004003du, 0x00000006u, 0x00000074u, 0x0000006eu, 0x000500b1u, 0x0000001du, 0x00000075u,
++    0x00000074u, 0x00000053u, 0x000400fau, 0x00000075u, 0x00000070u, 0x00000071u, 0x000200f8u, 0x00000070u,
++    0x0004003du, 0x00000006u, 0x00000079u, 0x0000006eu, 0x0004003du, 0x0000007bu, 0x0000007eu, 0x0000007du,
++    0x0004003du, 0x00000006u, 0x0000007fu, 0x0000006eu, 0x00050041u, 0x00000010u, 0x00000080u, 0x00000067u,
++    0x0000007fu, 0x0004003du, 0x00000007u, 0x00000081u, 0x00000080u, 0x00050039u, 0x00000007u, 0x00000082u,
++    0x0000000au, 0x00000081u, 0x00040064u, 0x0000007au, 0x00000083u, 0x0000007eu, 0x0007005fu, 0x00000084u,
++    0x00000085u, 0x00000083u, 0x00000082u, 0x00000002u, 0x00000027u, 0x0007004fu, 0x00000013u, 0x00000086u,
++    0x00000085u, 0x00000085u, 0x00000000u, 0x00000001u, 0x00050041u, 0x00000021u, 0x00000087u, 0x00000078u,
++    0x00000079u, 0x0003003eu, 0x00000087u, 0x00000086u, 0x000200f9u, 0x00000072u, 0x000200f8u, 0x00000072u,
++    0x0004003du, 0x00000006u, 0x00000088u, 0x0000006eu, 0x00050080u, 0x00000006u, 0x00000089u, 0x00000088u,
++    0x0000002du, 0x0003003eu, 0x0000006eu, 0x00000089u, 0x000200f9u, 0x0000006fu, 0x000200f8u, 0x00000071u,
++    0x0003003eu, 0x0000008au, 0x00000027u, 0x000200f9u, 0x0000008bu, 0x000200f8u, 0x0000008bu, 0x000400f6u,
++    0x0000008du, 0x0000008eu, 0x00000000u, 0x000200f9u, 0x0000008fu, 0x000200f8u, 0x0000008fu, 0x0004003du,
++    0x00000006u, 0x00000090u, 0x0000008au, 0x000500b1u, 0x0000001du, 0x00000091u, 0x00000090u, 0x00000053u,
++    0x000400fau, 0x00000091u, 0x0000008cu, 0x0000008du, 0x000200f8u, 0x0000008cu, 0x0004003du, 0x00000006u,
++    0x00000092u, 0x0000008au, 0x00060041u, 0x0000005bu, 0x00000093u, 0x00000067u, 0x00000092u, 0x0000001cu,
++    0x0004003du, 0x00000006u, 0x00000094u, 0x00000093u, 0x00060041u, 0x00000096u, 0x00000097u, 0x00000017u,
++    0x00000095u, 0x0000001cu, 0x0004003du, 0x00000006u, 0x00000098u, 0x00000097u, 0x000500afu, 0x0000001du,
++    0x00000099u, 0x00000094u, 0x00000098u, 0x000400a8u, 0x0000001du, 0x0000009au, 0x00000099u, 0x000300f7u,
++    0x0000009cu, 0x00000000u, 0x000400fau, 0x0000009au, 0x0000009bu, 0x0000009cu, 0x000200f8u, 0x0000009bu,
++    0x0004003du, 0x00000006u, 0x0000009du, 0x0000008au, 0x00060041u, 0x0000005bu, 0x0000009fu, 0x00000067u,
++    0x0000009du, 0x0000009eu, 0x0004003du, 0x00000006u, 0x000000a0u, 0x0000009fu, 0x00060041u, 0x00000096u,
++    0x000000a1u, 0x00000017u, 0x00000095u, 0x0000009eu, 0x0004003du, 0x00000006u, 0x000000a2u, 0x000000a1u,
++    0x000500afu, 0x0000001du, 0x000000a3u, 0x000000a0u, 0x000000a2u, 0x000200f9u, 0x0000009cu, 0x000200f8u,
++    0x0000009cu, 0x000700f5u, 0x0000001du, 0x000000a4u, 0x00000099u, 0x0000008cu, 0x000000a3u, 0x0000009bu,
++    0x000300f7u, 0x000000a6u, 0x00000000u, 0x000400fau, 0x000000a4u, 0x000000a5u, 0x000000a6u, 0x000200f8u,
++    0x000000a5u, 0x000200f9u, 0x0000008eu, 0x000200f8u, 0x000000a6u, 0x0004003du, 0x000000a8u, 0x000000abu,
++    0x000000aau, 0x0004003du, 0x00000006u, 0x000000acu, 0x0000008au, 0x00050041u, 0x00000010u, 0x000000adu,
++    0x00000067u, 0x000000acu, 0x0004003du, 0x00000007u, 0x000000aeu, 0x000000adu, 0x0004003du, 0x00000006u,
++    0x000000afu, 0x0000008au, 0x00050041u, 0x00000021u, 0x000000b0u, 0x00000078u, 0x000000afu, 0x0004003du,
++    0x00000013u, 0x000000b1u, 0x000000b0u, 0x00050041u, 0x00000028u, 0x000000b3u, 0x00000017u, 0x000000b2u,
++    0x0004003du, 0x00000013u, 0x000000b4u, 0x000000b3u, 0x00050085u, 0x00000013u, 0x000000b5u, 0x000000b1u,
++    0x000000b4u, 0x00050041u, 0x00000028u, 0x000000b6u, 0x00000017u, 0x00000051u, 0x0004003du, 0x00000013u,
++    0x000000b7u, 0x000000b6u, 0x00050083u, 0x00000013u, 0x000000b8u, 0x000000b5u, 0x000000b7u, 0x00050051u,
++    0x00000012u, 0x000000bau, 0x000000b8u, 0x00000000u, 0x00050051u, 0x00000012u, 0x000000bbu, 0x000000b8u,
++    0x00000001u, 0x00070050u, 0x00000084u, 0x000000bcu, 0x000000bau, 0x000000bbu, 0x000000b9u, 0x000000b9u,
++    0x00040063u, 0x000000abu, 0x000000aeu, 0x000000bcu, 0x000200f9u, 0x0000008eu, 0x000200f8u, 0x0000008eu,
++    0x0004003du, 0x00000006u, 0x000000bdu, 0x0000008au, 0x00050080u, 0x00000006u, 0x000000beu, 0x000000bdu,
++    0x0000002du, 0x0003003eu, 0x0000008au, 0x000000beu, 0x000200f9u, 0x0000008bu, 0x000200f8u, 0x0000008du,
++    0x000100fdu, 0x00010038u, 0x00050036u, 0x00000007u, 0x0000000au, 0x00000000u, 0x00000008u, 0x00030037u,
++    0x00000007u, 0x00000009u, 0x000200f8u, 0x0000000bu, 0x0004003bu, 0x00000010u, 0x00000011u, 0x00000007u,
++    0x0004003bu, 0x00000021u, 0x00000022u, 0x00000007u, 0x0003003eu, 0x00000011u, 0x00000009u, 0x00050041u,
++    0x00000019u, 0x0000001au, 0x00000017u, 0x00000018u, 0x0004003du, 0x00000014u, 0x0000001bu, 0x0000001au,
++    0x000500abu, 0x0000001du, 0x0000001eu, 0x0000001bu, 0x0000001cu, 0x000300f7u, 0x00000020u, 0x00000000u,
++    0x000400fau, 0x0000001eu, 0x0000001fu, 0x00000020u, 0x000200f8u, 0x0000001fu, 0x0004006fu, 0x00000013u,
++    0x00000023u, 0x00000009u, 0x00050050u, 0x00000013u, 0x00000025u, 0x00000024u, 0x00000024u, 0x00050081u,
++    0x00000013u, 0x00000026u, 0x00000023u, 0x00000025u, 0x00050041u, 0x00000028u, 0x00000029u, 0x00000017u,
++    0x00000027u, 0x0004003du, 0x00000013u, 0x0000002au, 0x00000029u, 0x00050083u, 0x00000013u, 0x0000002bu,
++    0x00000026u, 0x0000002au, 0x0003003eu, 0x00000022u, 0x0000002bu, 0x0004003du, 0x00000013u, 0x0000002cu,
++    0x00000022u, 0x00050041u, 0x00000028u, 0x0000002eu, 0x00000017u, 0x0000002du, 0x0004003du, 0x00000013u,
++    0x0000002fu, 0x0000002eu, 0x00050088u, 0x00000013u, 0x00000030u, 0x0000002cu, 0x0000002fu, 0x00050041u,
++    0x00000028u, 0x00000032u, 0x00000017u, 0x00000031u, 0x0004003du, 0x00000013u, 0x00000033u, 0x00000032u,
++    0x00050085u, 0x00000013u, 0x00000034u, 0x00000030u, 0x00000033u, 0x0006000cu, 0x00000013u, 0x00000035u,
++    0x00000001u, 0x00000008u, 0x00000034u, 0x0004006eu, 0x00000007u, 0x00000036u, 0x00000035u, 0x0003003eu,
++    0x00000011u, 0x00000036u, 0x000200f9u, 0x00000020u, 0x000200f8u, 0x00000020u, 0x0004003du, 0x00000007u,
++    0x00000037u, 0x00000011u, 0x00050041u, 0x0000003au, 0x0000003bu, 0x00000017u, 0x00000039u, 0x0004003du,
++    0x00000007u, 0x0000003cu, 0x0000003bu, 0x0008000cu, 0x00000007u, 0x0000003du, 0x00000001u, 0x0000002du,
++    0x00000037u, 0x00000038u, 0x0000003cu, 0x0003003eu, 0x00000011u, 0x0000003du, 0x0004003du, 0x00000007u,
++    0x0000003eu, 0x00000011u, 0x000200feu, 0x0000003eu, 0x00010038u, 0x00050036u, 0x00000007u, 0x0000000eu,
++    0x00000000u, 0x0000000cu, 0x00030037u, 0x00000006u, 0x0000000du, 0x000200f8u, 0x0000000fu, 0x0004003du,
++    0x00000041u, 0x00000045u, 0x00000043u, 0x0007004fu, 0x00000044u, 0x00000046u, 0x00000045u, 0x00000045u,
++    0x00000000u, 0x00000001u, 0x0004007cu, 0x00000007u, 0x00000047u, 0x00000046u, 0x00050084u, 0x00000007u,
++    0x0000004bu, 0x00000047u, 0x0000004au, 0x0004003du, 0x00000041u, 0x0000004du, 0x0000004cu, 0x0007004fu,
++    0x00000044u, 0x0000004eu, 0x0000004du, 0x0000004du, 0x00000000u, 0x00000001u, 0x0004007cu, 0x00000007u,
++    0x0000004fu, 0x0000004eu, 0x00050080u, 0x00000007u, 0x00000050u, 0x0000004bu, 0x0000004fu, 0x0005008bu,
++    0x00000006u, 0x00000052u, 0x0000000du, 0x00000051u, 0x00050084u, 0x00000006u, 0x00000054u, 0x00000052u,
++    0x00000053u, 0x00050087u, 0x00000006u, 0x00000055u, 0x0000000du, 0x00000051u, 0x00050084u, 0x00000006u,
++    0x00000056u, 0x00000055u, 0x00000053u, 0x00050050u, 0x00000007u, 0x00000057u, 0x00000054u, 0x00000056u,
++    0x00050080u, 0x00000007u, 0x00000058u, 0x00000050u, 0x00000057u, 0x000200feu, 0x00000058u, 0x00010038u
++};
+ enum Fmt : uint32_t
+ {
+     RGBA16F = 4,
+@@ -165,13 +310,20 @@ class Fsr4VkBridge
+         // everything downstream treats it as inverted: 1 - d of a standard projection is the reverse-Z projection with
+         // the same near / far. Jittered or display-size motion vectors are still refused (SGSR 2 then)
+         _flipDepth = !depthInverted;
+-        if (!lowResMv || jitteredMv)
+-        {
+-            LOG_WARN("Vela FSR 4 VK: the provider needs render-size, non-jittered motion vectors "
+-                     "(depthInverted {}, lowResMV {}, jitteredMV {})",
+-                     depthInverted, lowResMv, jitteredMv);
+-            return false;
+-        }
++        // Vela 0.8.16 MV: display-size and / or jittered motion vectors (and a MV format other than RG16F) no longer go to
++        // SGSR 2: a small compute pass (MvRecord, FidelityFX semantics) makes the render-size, non-jittered RG16F vectors the
++        // provider takes. Render-size, non-jittered RG16F vectors still go to the provider as they are (no pass).
++        // VELA_MV_PASS=1: the pass also then (identity: bit-identical vectors); VELA_MV_FFXDIV=1: jitter cancellation divided
++        // by the MV size as AMD's host code does (display size for display MVs) instead of the render size
++        _mvDisplay = !lowResMv;
++        _mvJittered = jitteredMv;
++        _mvForce = EnvOn("VELA_MV_PASS");
++        _mvFfxDiv = EnvOn("VELA_MV_FFXDIV");
++        if (_mvDisplay || _mvJittered || _mvForce)
++            LOG_INFO("Vela FSR 4 VK: motion vectors {}{} (depthInverted {}): the MV pass makes render-size, non-jittered "
++                     "vectors for the provider{}{}",
++                     _mvDisplay ? "display-size" : "render-size", _mvJittered ? ", jittered" : "", depthInverted,
++                     _mvForce ? " (VELA_MV_PASS)" : "", _mvFfxDiv ? " (VELA_MV_FFXDIV)" : "");
+         if (_flipDepth)
+         {
+             _di = std::make_unique<DI_Dx12>("VelaFsr4DepthFlip", device);
+@@ -286,6 +438,8 @@ class Fsr4VkBridge
+         }
+         if (!MakeFlush(device))
+             return false;
++        if ((_mvDisplay || _mvJittered || _mvForce) && !MvInit())
++            return false;
+         LOG_INFO("Vela FSR 4 VK: FSR {} VK INT8 context {}x{} -> {}x{} (hdr {}, network every {} frames)",
+                  _lite ? "4.1.2 Lite" : _v402 ? "4.0.2" : "4.1.1", rw, rh, dw, dh, hdr, _every);
+         // apps_npu/docs/11-npu-log-lines.md F3: the provider prints F1/F2/F4 itself (Message below, verbatim)
+@@ -320,11 +474,21 @@ class Fsr4VkBridge
+         Img in[3], out;
+         if (!Get(color, in[0], false) || !Get(dep, in[1], true) || !Get(mv, in[2], false) || !Get(output, out, false))
+             return false;
++        // Vela 0.8.16 MV: the pass when the vectors are not what the provider takes (see Init)
++        const bool mvPass = _mvDisplay || _mvJittered || _mvForce || FfxFormat(in[2].fmt) != Fsr4Vk::RG16F;
++        VkImageView mvSrc = VK_NULL_HANDLE;
++        if (mvPass)
++        {
++            if (_mvPipe == VK_NULL_HANDLE && !MvInit())
++                return false;
++            if ((mvSrc = MvSourceView(in[2])) == VK_NULL_HANDLE)
++                return Unsupported("motion vectors (MV pass)", in[2].fmt);
++        }
+         Fsr4Vk::DispatchUpscale d {};
+         d.header.type = Fsr4Vk::kDispatchUpscale;
+         d.color = Res(in[0], _rw, _rh, Fsr4Vk::kStateComputeRead, 0);
+         d.depth = Res(in[1], _rw, _rh, Fsr4Vk::kStateComputeRead, in[1].depthUsage);
+-        d.motionVectors = Res(in[2], _rw, _rh, Fsr4Vk::kStateComputeRead, 0);
++        d.motionVectors = Res(mvPass ? _mvOut : in[2], _rw, _rh, Fsr4Vk::kStateComputeRead, 0);
+         d.output = Res(out, _dw, _dh, Fsr4Vk::kStateUav, Fsr4Vk::kUsageUav);
+         if (!d.color.description.format)
+             return Unsupported("colour", in[0].fmt);
+@@ -335,7 +499,9 @@ class Fsr4VkBridge
+         if (!d.output.description.format)
+             return Unsupported("output", out.fmt);
+         d.jitterOffset = { f.jitterX, f.jitterY };
+-        d.motionVectorScale = { f.mvScaleX, f.mvScaleY };
++        // the pass writes render pixels: the provider's scale / renderSize then gives the FFX uv vector
++        d.motionVectorScale = mvPass ? Fsr4Vk::FfxApiFloatCoords2D { 1.0f, 1.0f }
++                                     : Fsr4Vk::FfxApiFloatCoords2D { f.mvScaleX, f.mvScaleY };
+         d.renderSize = { _rw, _rh };
+         d.upscaleSize = { _dw, _dh };
+         d.frameTimeDelta = f.frameTimeMs;
+@@ -353,6 +519,8 @@ class Fsr4VkBridge
+             return false;
+         }
+         Transition(cb, in, 3, out, true);
++        if (mvPass)
++            MvRecord(cb, mvSrc, f);
+         d.commandList = cb;
+         const auto r = _dispatch(&_ctx, &d.header);
+         Transition(cb, in, 3, out, false);
+@@ -365,8 +533,9 @@ class Fsr4VkBridge
+             return false;
+         }
+         if (_frames++ == 0)
+-            LOG_INFO("Vela FSR 4 VK: first frame dispatched (colour fmt {}, depth fmt {}, mv fmt {}, out fmt {})",
+-                     (int) in[0].fmt, (int) in[1].fmt, (int) in[2].fmt, (int) out.fmt);
++            LOG_INFO("Vela FSR 4 VK: first frame dispatched (colour fmt {}, depth fmt {}, mv fmt {}, out fmt {}){}",
++                     (int) in[0].fmt, (int) in[1].fmt, (int) in[2].fmt, (int) out.fmt,
++                     mvPass ? " through the MV pass" : "");
+         return true;
+     }
+ 
+@@ -397,6 +566,7 @@ class Fsr4VkBridge
+             _flip = nullptr;
+         }
+         _di.reset();
++        MvRelease();
+         _flipDepth = false;
+         _heapLogged = false;
+         if (_interop)
+@@ -600,6 +770,276 @@ class Fsr4VkBridge
+         _heapLogged = true;
+     }
+ 
++    static bool EnvOn(const char* name)
++    {
++        const char* e = std::getenv(name);
++        return e != nullptr && *e == '1';
++    }
++
++    // ---- Motion-vector pass (mvprep.comp): one compute dispatch (32x16 px tiles), render size, RG16F out, before the provider ----
++    static constexpr uint32_t MvTileX = 32, MvTileY = 16;  // output pixels per workgroup of mvprep.comp
++    static constexpr uint32_t MvRing = 16;  // descriptor sets / game views reused after 16 (views: 32) calls, as SGSR3FastVk
++    struct MvPush
++    {
++        float jitter[2], renderSize[2], displaySize[2], mvMul[2], cancel[2];
++        int32_t srcMax[2], rsize[2];
++        uint32_t display;
++    };
++
++    bool MvFail(const char* what)
++    {
++        LOG_ERROR("Vela FSR 4 VK: MV pass: {} failed", what);
++        return false;
++    }
++
++    bool MvInit()
++    {
++        if (_mvPipe != VK_NULL_HANDLE)
++            return true;
++        VkSamplerCreateInfo si { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
++        si.magFilter = si.minFilter = VK_FILTER_NEAREST;
++        si.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
++        si.addressModeU = si.addressModeV = si.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
++        if (vkCreateSampler(_vk, &si, nullptr, &_mvSampler) != VK_SUCCESS)
++            return MvFail("sampler");
++        const VkDescriptorSetLayoutBinding lb[2] = {
++            { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
++            { 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr }
++        };
++        VkDescriptorSetLayoutCreateInfo dci { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
++        dci.bindingCount = 2;
++        dci.pBindings = lb;
++        if (vkCreateDescriptorSetLayout(_vk, &dci, nullptr, &_mvDsl) != VK_SUCCESS)
++            return MvFail("set layout");
++        const VkPushConstantRange pr { VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(MvPush) };
++        VkPipelineLayoutCreateInfo li { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
++        li.setLayoutCount = 1;
++        li.pSetLayouts = &_mvDsl;
++        li.pushConstantRangeCount = 1;
++        li.pPushConstantRanges = &pr;
++        if (vkCreatePipelineLayout(_vk, &li, nullptr, &_mvPl) != VK_SUCCESS)
++            return MvFail("pipeline layout");
++        VkShaderModuleCreateInfo mi { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
++        mi.codeSize = sizeof(Fsr4Vk::kMvPrepSpv);
++        mi.pCode = Fsr4Vk::kMvPrepSpv;
++        VkShaderModule mod = VK_NULL_HANDLE;
++        if (vkCreateShaderModule(_vk, &mi, nullptr, &mod) != VK_SUCCESS)
++            return MvFail("shader module");
++        VkComputePipelineCreateInfo ci { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
++        ci.stage = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
++        ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
++        ci.stage.module = mod;
++        ci.stage.pName = "main";
++        ci.layout = _mvPl;
++        const VkResult vr = vkCreateComputePipelines(_vk, VK_NULL_HANDLE, 1, &ci, nullptr, &_mvPipe);
++        vkDestroyShaderModule(_vk, mod, nullptr);
++        if (vr != VK_SUCCESS)
++        {
++            _mvPipe = VK_NULL_HANDLE;
++            return MvFail("compute pipeline");
++        }
++        const VkDescriptorPoolSize ps[2] = { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MvRing },
++                                             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, MvRing } };
++        VkDescriptorPoolCreateInfo dpi { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
++        dpi.maxSets = MvRing;
++        dpi.poolSizeCount = 2;
++        dpi.pPoolSizes = ps;
++        if (vkCreateDescriptorPool(_vk, &dpi, nullptr, &_mvPool) != VK_SUCCESS)
++            return MvFail("descriptor pool");
++        for (auto& set : _mvSet)
++        {
++            VkDescriptorSetAllocateInfo ai { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
++            ai.descriptorPool = _mvPool;
++            ai.descriptorSetCount = 1;
++            ai.pSetLayouts = &_mvDsl;
++            if (vkAllocateDescriptorSets(_vk, &ai, &set) != VK_SUCCESS)
++                return MvFail("descriptor sets");
++        }
++        // the provider's motion vectors: render size (the context's), RG16F, written in GENERAL, read in SHADER_READ_ONLY
++        VkImageCreateInfo ic { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
++        ic.imageType = VK_IMAGE_TYPE_2D;
++        ic.format = VK_FORMAT_R16G16_SFLOAT;
++        ic.extent = { _rw, _rh, 1 };
++        ic.mipLevels = 1;
++        ic.arrayLayers = 1;
++        ic.samples = VK_SAMPLE_COUNT_1_BIT;
++        ic.tiling = VK_IMAGE_TILING_OPTIMAL;
++        ic.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
++        ic.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
++        if (vkCreateImage(_vk, &ic, nullptr, &_mvOut.image) != VK_SUCCESS)
++            return MvFail("image");
++        VkMemoryRequirements req;
++        vkGetImageMemoryRequirements(_vk, _mvOut.image, &req);
++        VkPhysicalDeviceMemoryProperties mp;
++        vkGetPhysicalDeviceMemoryProperties(_physical, &mp);
++        uint32_t type = UINT32_MAX;
++        for (uint32_t i = 0; i < mp.memoryTypeCount && type == UINT32_MAX; i++)
++            if ((req.memoryTypeBits & (1u << i)) && (mp.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT))
++                type = i;
++        VkMemoryAllocateInfo ai { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
++        ai.allocationSize = req.size;
++        ai.memoryTypeIndex = type;
++        if (type == UINT32_MAX || vkAllocateMemory(_vk, &ai, nullptr, &_mvMem) != VK_SUCCESS ||
++            vkBindImageMemory(_vk, _mvOut.image, _mvMem, 0) != VK_SUCCESS)
++            return MvFail("image memory");
++        VkImageViewCreateInfo vi { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
++        vi.image = _mvOut.image;
++        vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
++        vi.format = VK_FORMAT_R16G16_SFLOAT;
++        vi.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
++        if (vkCreateImageView(_vk, &vi, nullptr, &_mvOutView) != VK_SUCCESS)
++            return MvFail("image view");
++        _mvOut.fmt = VK_FORMAT_R16G16_SFLOAT;
++        _mvOut.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
++        LOG_INFO("Vela FSR 4 VK: MV pass ready ({}x{} RG16F, render px)", _rw, _rh);
++        return true;
++    }
++
++    // a view of the game's MV image for this call only (destroyed 2 x MvRing calls later: the game may free the image and
++    // vkd3d-proton reuse its handle, SGSR3FastVk::NewViewFrame); float formats only (texelFetch on a float sampler)
++    VkImageView MvSourceView(const Img& src)
++    {
++        _mvCalls++;
++        while (!_mvRetire.empty() && _mvRetire.front().first + 2 * MvRing <= _mvCalls)
++        {
++            vkDestroyImageView(_vk, _mvRetire.front().second, nullptr);
++            _mvRetire.pop_front();
++        }
++        switch (src.fmt)
++        {
++        case VK_FORMAT_R16G16_SFLOAT:
++        case VK_FORMAT_R32G32_SFLOAT:
++        case VK_FORMAT_R16G16B16A16_SFLOAT:
++        case VK_FORMAT_R32G32B32A32_SFLOAT:
++        case VK_FORMAT_R16G16_SNORM:
++        case VK_FORMAT_R8G8_SNORM:
++            break;
++        default:
++            return VK_NULL_HANDLE;
++        }
++        VkImageViewCreateInfo vi { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
++        vi.image = src.image;
++        vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
++        vi.format = src.fmt;
++        vi.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
++        VkImageView v = VK_NULL_HANDLE;
++        if (vkCreateImageView(_vk, &vi, nullptr, &v) != VK_SUCCESS)
++            return VK_NULL_HANDLE;
++        _mvRetire.push_back({ _mvCalls, v });
++        return v;
++    }
++
++    // inside the interop, after Transition (the game's MV is SHADER_READ_ONLY_OPTIMAL)
++    void MvRecord(VkCommandBuffer cb, VkImageView src, const Frame& f)
++    {
++        const float rw = (float) _rw, rh = (float) _rh, dw = (float) _dw, dh = (float) _dh;
++        MvPush pc {};
++        pc.jitter[0] = f.jitterX;
++        pc.jitter[1] = f.jitterY;
++        pc.renderSize[0] = rw;
++        pc.renderSize[1] = rh;
++        pc.displaySize[0] = dw;
++        pc.displaySize[1] = dh;
++        // FFX: uv = mv * motionVectorScale / motionVectorsTargetSize; the provider gets uv * renderSize (scale 1)
++        pc.mvMul[0] = _mvDisplay ? f.mvScaleX / dw * rw : f.mvScaleX;
++        pc.mvMul[1] = _mvDisplay ? f.mvScaleY / dh * rh : f.mvScaleY;
++        // FFX: uv -= (previousJitter - jitter) / size (AMD: size = the MV target size; here the render size unless
++        // VELA_MV_FFXDIV, since the jitter is in render pixels: see)
++        if (_mvJittered)
++        {
++            const bool ffx = _mvFfxDiv && _mvDisplay;
++            pc.cancel[0] = (_mvPrevJitter[0] - f.jitterX) * (ffx ? rw / dw : 1.0f);
++            pc.cancel[1] = (_mvPrevJitter[1] - f.jitterY) * (ffx ? rh / dh : 1.0f);
++        }
++        _mvPrevJitter[0] = f.jitterX;
++        _mvPrevJitter[1] = f.jitterY;
++        pc.srcMax[0] = (int32_t) (_mvDisplay ? _dw : _rw) - 1;
++        pc.srcMax[1] = (int32_t) (_mvDisplay ? _dh : _rh) - 1;
++        pc.rsize[0] = (int32_t) _rw;
++        pc.rsize[1] = (int32_t) _rh;
++        pc.display = _mvDisplay ? 1u : 0u;
++
++        const VkDescriptorSet set = _mvSet[_mvCalls % MvRing];
++        const VkDescriptorImageInfo ii[2] = { { _mvSampler, src, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
++                                              { VK_NULL_HANDLE, _mvOutView, VK_IMAGE_LAYOUT_GENERAL } };
++        VkWriteDescriptorSet w[2] {};
++        for (uint32_t i = 0; i < 2; i++)
++        {
++            w[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
++            w[i].dstSet = set;
++            w[i].dstBinding = i;
++            w[i].descriptorCount = 1;
++            w[i].descriptorType = i ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
++            w[i].pImageInfo = &ii[i];
++        }
++        vkUpdateDescriptorSets(_vk, 2, w, 0, nullptr);
++        VkImageMemoryBarrier b { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
++        b.srcAccessMask = 0;  // every texel is rewritten: the old contents are dropped (the previous frame's reads: WAR)
++        b.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
++        b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
++        b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
++        b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
++        b.image = _mvOut.image;
++        b.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
++        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0,
++                             nullptr, 1, &b);
++        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, _mvPipe);
++        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, _mvPl, 0, 1, &set, 0, nullptr);
++        vkCmdPushConstants(cb, _mvPl, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
++        vkCmdDispatch(cb, (_rw + MvTileX - 1) / MvTileX, (_rh + MvTileY - 1) / MvTileY, 1);
++        b.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
++        b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_MEMORY_READ_BIT;
++        b.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
++        b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
++        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0,
++                             nullptr, 1, &b);
++        if (!_mvLogged)
++            LOG_INFO("Vela FSR 4 VK: MV pass on: {} -> {}x{} (mvMul {} {}, srcMax {} {}, cancel {} {})",
++                     _mvDisplay ? "display-size" : "render-size", _rw, _rh, pc.mvMul[0], pc.mvMul[1], pc.srcMax[0],
++                     pc.srcMax[1], pc.cancel[0], pc.cancel[1]);
++        _mvLogged = true;
++    }
++
++    void MvRelease()
++    {
++        if (_vk != VK_NULL_HANDLE)
++        {
++            for (auto& r : _mvRetire)
++                vkDestroyImageView(_vk, r.second, nullptr);
++            if (_mvPipe)
++                vkDestroyPipeline(_vk, _mvPipe, nullptr);
++            if (_mvPl)
++                vkDestroyPipelineLayout(_vk, _mvPl, nullptr);
++            if (_mvPool)
++                vkDestroyDescriptorPool(_vk, _mvPool, nullptr);
++            if (_mvDsl)
++                vkDestroyDescriptorSetLayout(_vk, _mvDsl, nullptr);
++            if (_mvSampler)
++                vkDestroySampler(_vk, _mvSampler, nullptr);
++            if (_mvOutView)
++                vkDestroyImageView(_vk, _mvOutView, nullptr);
++            if (_mvOut.image)
++                vkDestroyImage(_vk, _mvOut.image, nullptr);
++            if (_mvMem)
++                vkFreeMemory(_vk, _mvMem, nullptr);
++        }
++        _mvRetire.clear();
++        _mvPipe = VK_NULL_HANDLE;
++        _mvPl = VK_NULL_HANDLE;
++        _mvPool = VK_NULL_HANDLE;
++        _mvDsl = VK_NULL_HANDLE;
++        _mvSampler = VK_NULL_HANDLE;
++        _mvOutView = VK_NULL_HANDLE;
++        _mvOut = Img {};
++        _mvMem = VK_NULL_HANDLE;
++        for (auto& set : _mvSet)
++            set = VK_NULL_HANDLE;
++        _mvPrevJitter[0] = _mvPrevJitter[1] = 0.0f;  // FFX: previousJitterOffset starts at 0 (context memset)
++        _mvCalls = 0;
++        _mvLogged = false;
++        _mvDisplay = _mvJittered = _mvForce = _mvFfxDiv = false;
++    }
++
+     // 1 - d of the game's depth into an R32F texture of the depth's size, left in NON_PIXEL_SHADER_RESOURCE
+     bool FlipDepth(ID3D12GraphicsCommandList* cl, const Tex& depth)
+     {
+@@ -690,4 +1130,18 @@ class Fsr4VkBridge
+     ID3D12Resource* _flip = nullptr;
+     D3D12_RESOURCE_STATES _flipState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+     ID3D12DescriptorHeap* _dummyHeap[2] = { nullptr, nullptr };
++    // Vela 0.8.16 MV pass
++    bool _mvDisplay = false, _mvJittered = false, _mvForce = false, _mvFfxDiv = false, _mvLogged = false;
++    VkSampler _mvSampler = VK_NULL_HANDLE;
++    VkDescriptorSetLayout _mvDsl = VK_NULL_HANDLE;
++    VkPipelineLayout _mvPl = VK_NULL_HANDLE;
++    VkPipeline _mvPipe = VK_NULL_HANDLE;
++    VkDescriptorPool _mvPool = VK_NULL_HANDLE;
++    VkDescriptorSet _mvSet[MvRing] = {};
++    Img _mvOut;
++    VkImageView _mvOutView = VK_NULL_HANDLE;
++    VkDeviceMemory _mvMem = VK_NULL_HANDLE;
++    uint64_t _mvCalls = 0;
++    std::deque<std::pair<uint64_t, VkImageView>> _mvRetire;
++    float _mvPrevJitter[2] = { 0.0f, 0.0f };
+ };

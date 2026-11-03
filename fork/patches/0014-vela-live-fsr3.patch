@@ -1,0 +1,85 @@
+diff --git a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+index fb3da061..c65ef65a 100644
+--- a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
++++ b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+@@ -1041,6 +1041,7 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
+         const int lossy = m == VelaLive::Model::Fsr4Lite ? lv.lossy : 1;
+         const int npu = m == VelaLive::Model::Fsr4Lite ? lv.npu : 0;
+         const Upscaler want = m == VelaLive::Model::Sgsr2   ? Upscaler::SGSR2
++                              : m == VelaLive::Model::Fsr3  ? Upscaler::FFX
+                               : m == VelaLive::Model::Unset ? cfg.Dx12Upscaler.value_or_default()
+                                                             : Upscaler::SGSR3;
+         const bool seen = velaHandles.contains(handleId);
+diff --git a/OptiScaler/upscalers/ffx/FFXFeature_Dx12.cpp b/OptiScaler/upscalers/ffx/FFXFeature_Dx12.cpp
+index 9bb2ca20..c83462d3 100644
+--- a/OptiScaler/upscalers/ffx/FFXFeature_Dx12.cpp
++++ b/OptiScaler/upscalers/ffx/FFXFeature_Dx12.cpp
+@@ -677,6 +677,28 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
+             }
+         }
+ 
++        // Vela live model fsr3 (VelaLive.h): FSR 3.1 -- the newest 3.x upscaler the FidelityFX DLL offers (with FSR 4
++        // INT8 forced the block above would take 4.x)
++        if (VelaLive::Poll().model == VelaLive::Model::Fsr3)
++        {
++            auto& names = State::Instance().ffxUpscalerVersionNames;
++            int best3 = -1;
++            for (size_t i = 0; i < names.size(); i++)
++            {
++                const std::string n = names[i] != nullptr ? names[i] : "";
++                if (n.rfind("3.", 0) == 0 &&
++                    (best3 < 0 || n > std::string(names[best3] != nullptr ? names[best3] : "")))
++                    best3 = (int) i;
++            }
++            if (best3 >= 0)
++            {
++                Config::Instance()->FfxUpscalerIndex.set_volatile_value(best3);
++                LOG_INFO("Vela: FFX upscaler index {} ({}) for FSR 3", best3, names[best3]);
++            }
++            else
++                LOG_WARN("Vela: FSR 3 asked, the FidelityFX DLL offers no 3.x upscaler");
++        }
++
+         InitFlags();
+ 
+         ffxCreateBackendDX12Desc backendDesc = { 0 };
+diff --git a/OptiScaler/upscalers/sgsr3/VelaLive.h b/OptiScaler/upscalers/sgsr3/VelaLive.h
+index 28e4611d..d7a83639 100644
+--- a/OptiScaler/upscalers/sgsr3/VelaLive.h
++++ b/OptiScaler/upscalers/sgsr3/VelaLive.h
+@@ -5,6 +5,8 @@
+ //   model=ai|p2b|sr|sgsr2|fsr4|fsr4lite  Vela AI (the INT8 recipe when the device has it), Vela AI on the fp16 P2b recipe,
+ //                          Vela SR, OptiScaler's SGSR 2, or FSR 4.1.1 VK INT8 (fsr4vk provider inside SGSR 3, Fsr4VkBridge.h;
+ //                          Vela AI when it cannot run); fsr4lite = FSR 4.1.2 Lite on the same provider (0.7.0);
++//                          fsr3 = FSR 3.1 (Vela 0.8.2+): OptiScaler's FFX backend with the amd_fidelityfx_dx12.dll in
++//                          the game folder (FFXFeature_Dx12.cpp takes its newest 3.x upscaler);
+ //                          a change re-creates the upscaler (NVNGX_DLSS_Dx12.cpp)
+ //   npu=0|1|2           FSR 4.1 Lite network on the Hexagon NPU (VK_LAYER_VELA_npu): 0 off, 1 exact, 2 async (one frame
+ //                       late); absent = 0; a change re-creates the context (needs lossy=1)
+@@ -37,7 +39,8 @@ enum class Model
+     Sr,
+     Sgsr2,
+     Fsr4,
+-    Fsr4Lite
++    Fsr4Lite,
++    Fsr3
+ };
+ 
+ struct Values
+@@ -55,7 +58,7 @@ struct Values
+ 
+ inline const char* ModelName(Model m)
+ {
+-    return m == Model::Ai ? "ai" : m == Model::P2b ? "p2b" : m == Model::Sr ? "sr" : m == Model::Sgsr2 ? "sgsr2" : m == Model::Fsr4 ? "fsr4" : m == Model::Fsr4Lite ? "fsr4lite" : "-";
++    return m == Model::Ai ? "ai" : m == Model::P2b ? "p2b" : m == Model::Sr ? "sr" : m == Model::Sgsr2 ? "sgsr2" : m == Model::Fsr4 ? "fsr4" : m == Model::Fsr4Lite ? "fsr4lite" : m == Model::Fsr3 ? "fsr3" : "-";
+ }
+ 
+ inline std::string Path()
+@@ -99,6 +102,7 @@ inline Values Parse(const std::string& text)
+                       : s == "sgsr2" ? Model::Sgsr2
+                       : s == "fsr4"  ? Model::Fsr4
+                       : s == "fsr4lite" ? Model::Fsr4Lite
++                      : s == "fsr3"  ? Model::Fsr3
+                                      : Model::Unset;
+         else if (k == "ratio")
+             v.ratio = s == "game" ? 0.0f : (f >= 1.0f && f <= 6.0f ? f : -1.0f);

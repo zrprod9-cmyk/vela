@@ -1,0 +1,81 @@
+diff --git a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+index b3433d83..7e4ca585 100644
+--- a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
++++ b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+@@ -1040,7 +1040,7 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
+         const VelaLive::Model m = lv.model;
+         const int lossy = m == VelaLive::Model::Fsr4Lite ? lv.lossy : 1;
+         // Vela 0.8.3: the NPU also for the full FSR 4.1.1 model (graph nf4_exact)
+-        const int npu = m == VelaLive::Model::Fsr4Lite || m == VelaLive::Model::Fsr4 ? lv.npu : 0;
++        const int npu = m == VelaLive::Model::Fsr4Lite || VelaLive::IsFsr4Full(m) ? lv.npu : 0;  // FF2: and fsr4fast
+         // Vela 0.8.13: fsr4 / fsr4lite run on the SGSR 3 feature (its FSR 4 VK bridge); when that cannot run here the
+         // handles go to SGSR 2 (one line); Vela AI / Vela SR are no longer offered, an ini asking for SGSR 3 alone
+         // (no live file) gets SGSR 2 too
+@@ -1052,7 +1052,9 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
+             fsr4DownLogged = false;
+             lastModel = m;
+         }
+-        const bool isFsr4 = m == VelaLive::Model::Fsr4 || m == VelaLive::Model::Fsr4Lite;
++        // FF2 (0.8.16): fsr4fast is its own model, so fsr4 <-> fsr4fast re-creates every handle (h.model != m below) and the
++        // provider reads the new mode at that context create
++        const bool isFsr4 = VelaLive::IsFsr4Full(m) || m == VelaLive::Model::Fsr4Lite;
+         const bool fsr4Down = isFsr4 && VelaLive::Fsr4Failed();
+         if (fsr4Down && !fsr4DownLogged)
+         {
+diff --git a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
+index 48ab582b..d76c26c9 100644
+--- a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
++++ b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
+@@ -302,7 +302,7 @@ bool SGSR3FeatureDx12::CreatePipelines(ID3D12Device* device)
+     // Vela live: the panel's model wins over the launch options (VelaLive.h)
+     if (const VelaLive::Model lm = VelaLive::Poll(true).model; !_abMode && lm != VelaLive::Model::Unset)
+     {
+-        if (lm == VelaLive::Model::Ai || lm == VelaLive::Model::P2b || lm == VelaLive::Model::Fsr4 ||
++        if (lm == VelaLive::Model::Ai || lm == VelaLive::Model::P2b || VelaLive::IsFsr4Full(lm) ||
+             lm == VelaLive::Model::Fsr4Lite)
+             _fixedMode = Mode::Student;
+         else if (lm == VelaLive::Model::Sr)
+@@ -324,7 +324,7 @@ bool SGSR3FeatureDx12::CreatePipelines(ID3D12Device* device)
+                 Fsr4VkBridge::NpuShown() = true;
+             }
+         }
+-        else if ((lm == VelaLive::Model::Fsr4 || lm == VelaLive::Model::Fsr4Lite) &&
++        else if ((VelaLive::IsFsr4Full(lm) || lm == VelaLive::Model::Fsr4Lite) &&
+             !_fsr4.Init(device, RenderWidth(), RenderHeight(), TargetWidth(), TargetHeight(), DepthInverted(), IsHdr(),
+                         LowResMV(), JitteredMV(), lm == VelaLive::Model::Fsr4Lite,
+                         (uint32_t) VelaLive::St().cur.lossy, (uint32_t) VelaLive::St().cur.npu))
+diff --git a/OptiScaler/upscalers/sgsr3/VelaLive.h b/OptiScaler/upscalers/sgsr3/VelaLive.h
+index ed81022e..0dc6262b 100644
+--- a/OptiScaler/upscalers/sgsr3/VelaLive.h
++++ b/OptiScaler/upscalers/sgsr3/VelaLive.h
+@@ -40,7 +40,8 @@ enum class Model
+     Sgsr2,
+     Fsr4,
+     Fsr4Lite,
+-    Fsr3
++    Fsr3,
++    Fsr4Fast  // Vela 0.8.16: "FSR 4 Fast" = fsr4 on the same provider, which reads model=fsr4fast at context create
+ };
+ 
+ struct Values
+@@ -64,9 +65,11 @@ inline bool& Fsr4Failed()
+     return failed;
+ }
+ 
++// Vela 0.8.16: fsr4fast runs wherever fsr4 runs (the SGSR 3 feature's FSR 4 VK bridge, SGSR 2 when it cannot)
++inline bool IsFsr4Full(Model m) { return m == Model::Fsr4 || m == Model::Fsr4Fast; }
+ inline const char* ModelName(Model m)
+ {
+-    return m == Model::Ai ? "ai" : m == Model::P2b ? "p2b" : m == Model::Sr ? "sr" : m == Model::Sgsr2 ? "sgsr2" : m == Model::Fsr4 ? "fsr4" : m == Model::Fsr4Lite ? "fsr4lite" : m == Model::Fsr3 ? "fsr3" : "-";
++    return m == Model::Ai ? "ai" : m == Model::P2b ? "p2b" : m == Model::Sr ? "sr" : m == Model::Sgsr2 ? "sgsr2" : m == Model::Fsr4 ? "fsr4" : m == Model::Fsr4Lite ? "fsr4lite" : m == Model::Fsr3 ? "fsr3" : m == Model::Fsr4Fast ? "fsr4fast" : "-";
+ }
+ 
+ inline std::string Path()
+@@ -108,6 +111,7 @@ inline Values Parse(const std::string& text)
+             // of an older live file (ai, p2b, sr, student) mean SGSR 2
+             v.model = s == "ai" || s == "p2b" || s == "sr" || s == "student" || s == "sgsr2" ? Model::Sgsr2
+                       : s == "fsr4"  ? Model::Fsr4
++                      : s == "fsr4fast" ? Model::Fsr4Fast
+                       : s == "fsr4lite" ? Model::Fsr4Lite
+                       : s == "fsr3"  ? Model::Fsr3
+                                      : Model::Unset;

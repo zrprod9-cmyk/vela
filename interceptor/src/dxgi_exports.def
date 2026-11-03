@@ -1,0 +1,9 @@
+; dxgi proxy exports (undecorated names the game imports). NGX exports are emitted via
+; __declspec(dllexport) from nvngx_dx12.cpp and need no .def entry.
+LIBRARY dxgi
+EXPORTS
+    CreateDXGIFactory
+    CreateDXGIFactory1
+    CreateDXGIFactory2
+    DXGIDeclareAdapterRemovalSupport
+    DXGIGetDebugInterface1

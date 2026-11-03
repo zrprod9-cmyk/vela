@@ -1,0 +1,10 @@
+#version 450
+// Zero-copy pack. Same math as npu_pack.comp, but the dense 960x540x16 uint8 input goes straight into the
+// layer's imported fsr4npud dma-buf (set 1, uvec4 words; input tensor at uvec4 index pc.qin). Byte layout identical to the
+// R32_UINT image + tight image->buffer copy of 0.8.0 (word j at byte 4j), so the HTP sees the same bytes.
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0, std430) readonly buffer S { uvec4 q[]; } scr;
+layout(set = 1, binding = 0, std430) writeonly buffer T { uvec4 q[]; } t;
+layout(push_constant) uniform P { uint qin, q0, q1, pad; } pc;
+void main() { uint p = gl_GlobalInvocationID.x; if (p >= 518400u) return; uint x = p % 960u, y = p / 960u;
+  t.q[pc.qin + p] = scr.q[(x + 1u) + 962u * (y + 1u)] ^ uvec4(0x80808080u); }

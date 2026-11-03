@@ -1,0 +1,17 @@
+#version 460
+// One step of the bounded GPU wait of the NPU layer. The layer records 11 steps, each a vkCmdDispatchIndirect whose x
+// (1 = keep waiting, 0 = done) the command processor reads from the slot's CPU-written line; a step that runs only spends ITERS
+// atomics on a GPU-only scratch word (measured 0.23-0.70 us each on the A740: 680 MHz pinned / 220 MHz min), so the steps double
+// in length. No descriptor sets or push constants: the scratch address comes in specialization constants.
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_buffer_reference_uvec2 : require
+layout(local_size_x = 1) in;
+layout(buffer_reference, std430, buffer_reference_align = 4) coherent buffer W { uint v[]; };
+layout(constant_id = 0) const uint S_LO = 0u;
+layout(constant_id = 1) const uint S_HI = 0u;
+layout(constant_id = 2) const uint ITERS = 1u;
+void main() {
+  W s = W(uvec2(S_LO, S_HI)); uint a = 0u;
+  for (uint i = 0u; i < ITERS; ++i) a += atomicAdd(s.v[0], 1u);
+  s.v[1] = a;
+}

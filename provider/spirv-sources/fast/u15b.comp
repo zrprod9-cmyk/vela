@@ -1,0 +1,72 @@
+#version 450
+// Derived from AMD FidelityFX SDK shaders (MIT); see ../amd/NOTICE.md. Modifications: GPL-3.0.
+#extension GL_EXT_samplerless_texture_functions : require
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+layout(push_constant, std430) uniform PC { uvec2 unused; uint uav; uint srv; uvec2 size; } pc;
+layout(set = 1, binding = 1) uniform texture2D tex[];
+layout(set = 1, binding = 1) uniform writeonly image2D img[];
+void main()
+{
+    uint bx = gl_GlobalInvocationID.x, by = gl_GlobalInvocationID.y;
+    if (bx >= pc.size.x / 2u || by >= pc.size.y / 2u) return;
+    ivec2 mx = ivec2(pc.size) - 1; int gx = int(bx) * 2 + (-1), gy = int(by) * 2 + (-1);
+    int x0 = clamp(gx + 0, 0, mx.x);
+    int x1 = clamp(gx + 1, 0, mx.x);
+    int x2 = clamp(gx + 2, 0, mx.x);
+    int x3 = clamp(gx + 3, 0, mx.x);
+    vec3 o00 = vec3(0.0), o01 = vec3(0.0), o02 = vec3(0.0), o10 = vec3(0.0), o11 = vec3(0.0), o12 = vec3(0.0), o20 = vec3(0.0), o21 = vec3(0.0), o22 = vec3(0.0);
+    { int y = clamp(gy + 0, 0, mx.y);
+      vec3 c0 = texelFetch(tex[pc.srv], ivec2(x0, y), 0).xyz; vec3 c1 = texelFetch(tex[pc.srv], ivec2(x1, y), 0).xyz; vec3 c2 = texelFetch(tex[pc.srv], ivec2(x2, y), 0).xyz; vec3 c3 = texelFetch(tex[pc.srv], ivec2(x3, y), 0).xyz;
+      vec3 h0 = 0.166666667 * c0 + 0.833333333 * c1;
+      vec3 h1 = 0.500000000 * c1 + 0.500000000 * c2;
+      vec3 h2 = 0.833333333 * c2 + 0.166666667 * c3;
+      o00 += 0.166666667 * h0;
+      o01 += 0.166666667 * h1;
+      o02 += 0.166666667 * h2;
+    }
+    { int y = clamp(gy + 1, 0, mx.y);
+      vec3 c0 = texelFetch(tex[pc.srv], ivec2(x0, y), 0).xyz; vec3 c1 = texelFetch(tex[pc.srv], ivec2(x1, y), 0).xyz; vec3 c2 = texelFetch(tex[pc.srv], ivec2(x2, y), 0).xyz; vec3 c3 = texelFetch(tex[pc.srv], ivec2(x3, y), 0).xyz;
+      vec3 h0 = 0.166666667 * c0 + 0.833333333 * c1;
+      vec3 h1 = 0.500000000 * c1 + 0.500000000 * c2;
+      vec3 h2 = 0.833333333 * c2 + 0.166666667 * c3;
+      o00 += 0.833333333 * h0;
+      o01 += 0.833333333 * h1;
+      o02 += 0.833333333 * h2;
+      o10 += 0.500000000 * h0;
+      o11 += 0.500000000 * h1;
+      o12 += 0.500000000 * h2;
+    }
+    { int y = clamp(gy + 2, 0, mx.y);
+      vec3 c0 = texelFetch(tex[pc.srv], ivec2(x0, y), 0).xyz; vec3 c1 = texelFetch(tex[pc.srv], ivec2(x1, y), 0).xyz; vec3 c2 = texelFetch(tex[pc.srv], ivec2(x2, y), 0).xyz; vec3 c3 = texelFetch(tex[pc.srv], ivec2(x3, y), 0).xyz;
+      vec3 h0 = 0.166666667 * c0 + 0.833333333 * c1;
+      vec3 h1 = 0.500000000 * c1 + 0.500000000 * c2;
+      vec3 h2 = 0.833333333 * c2 + 0.166666667 * c3;
+      o10 += 0.500000000 * h0;
+      o11 += 0.500000000 * h1;
+      o12 += 0.500000000 * h2;
+      o20 += 0.833333333 * h0;
+      o21 += 0.833333333 * h1;
+      o22 += 0.833333333 * h2;
+    }
+    { int y = clamp(gy + 3, 0, mx.y);
+      vec3 c0 = texelFetch(tex[pc.srv], ivec2(x0, y), 0).xyz; vec3 c1 = texelFetch(tex[pc.srv], ivec2(x1, y), 0).xyz; vec3 c2 = texelFetch(tex[pc.srv], ivec2(x2, y), 0).xyz; vec3 c3 = texelFetch(tex[pc.srv], ivec2(x3, y), 0).xyz;
+      vec3 h0 = 0.166666667 * c0 + 0.833333333 * c1;
+      vec3 h1 = 0.500000000 * c1 + 0.500000000 * c2;
+      vec3 h2 = 0.833333333 * c2 + 0.166666667 * c3;
+      o20 += 0.166666667 * h0;
+      o21 += 0.166666667 * h1;
+      o22 += 0.166666667 * h2;
+    }
+    ivec2 ob = ivec2(int(bx) * 3, int(by) * 3);
+    { vec3 v = clamp(o00, vec3(0.0), vec3(64000.0)); imageStore(img[pc.uav], ob + ivec2(0, 0), vec4(v, v.x)); }
+    { vec3 v = clamp(o01, vec3(0.0), vec3(64000.0)); imageStore(img[pc.uav], ob + ivec2(1, 0), vec4(v, v.x)); }
+    { vec3 v = clamp(o02, vec3(0.0), vec3(64000.0)); imageStore(img[pc.uav], ob + ivec2(2, 0), vec4(v, v.x)); }
+    { vec3 v = clamp(o10, vec3(0.0), vec3(64000.0)); imageStore(img[pc.uav], ob + ivec2(0, 1), vec4(v, v.x)); }
+    { vec3 v = clamp(o11, vec3(0.0), vec3(64000.0)); imageStore(img[pc.uav], ob + ivec2(1, 1), vec4(v, v.x)); }
+    { vec3 v = clamp(o12, vec3(0.0), vec3(64000.0)); imageStore(img[pc.uav], ob + ivec2(2, 1), vec4(v, v.x)); }
+    { vec3 v = clamp(o20, vec3(0.0), vec3(64000.0)); imageStore(img[pc.uav], ob + ivec2(0, 2), vec4(v, v.x)); }
+    { vec3 v = clamp(o21, vec3(0.0), vec3(64000.0)); imageStore(img[pc.uav], ob + ivec2(1, 2), vec4(v, v.x)); }
+    { vec3 v = clamp(o22, vec3(0.0), vec3(64000.0)); imageStore(img[pc.uav], ob + ivec2(2, 2), vec4(v, v.x)); }
+}

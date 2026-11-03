@@ -1,0 +1,850 @@
+#version 450
+// Derived from AMD FidelityFX SDK shaders (MIT); see ../amd/NOTICE.md. Modifications: GPL-3.0.
+#if defined(GL_EXT_control_flow_attributes)
+#extension GL_EXT_control_flow_attributes : require
+#define SPIRV_CROSS_FLATTEN [[flatten]]
+#define SPIRV_CROSS_BRANCH [[dont_flatten]]
+#define SPIRV_CROSS_UNROLL [[unroll]]
+#define SPIRV_CROSS_LOOP [[dont_unroll]]
+#else
+#define SPIRV_CROSS_FLATTEN
+#define SPIRV_CROSS_BRANCH
+#define SPIRV_CROSS_UNROLL
+#define SPIRV_CROSS_LOOP
+#endif
+#extension GL_EXT_spirv_intrinsics : require
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+const uint _1088[576] = uint[](168558335u, 420744453u, 4128176897u, 50528016u, 4212263412u, 4043764986u, 4227399165u, 4278385927u, 4193847802u, 3489205507u, 4043111157u, 4009496071u, 4227465207u, 49740278u, 4228511226u, 4210822148u, 4194965501u, 4009621502u, 16450307u, 4060612617u, 4077066512u, 420931845u, 4245418748u, 4278842089u, 268893189u, 469697794u, 117645332u, 32566028u, 4211409413u, 4160295425u, 4195023619u, 4177854735u, 4278985479u, 554886171u, 3993765348u, 4244298712u, 33757955u, 134481666u, 4227270409u, 50395133u, 4143117072u, 3371700996u, 4144036596u, 117965576u, 4227727609u, 4161215492u, 4210881024u, 3941989133u, 4261474311u, 520161270u, 395541u, 234557197u, 66319622u, 320801292u, 101317630u, 33033987u, 3974298383u, 3203732221u, 4210030582u, 419110384u, 185338366u, 201980432u, 4127852798u, 4127325958u, 4177329907u, 4211345913u, 284559868u, 4210947058u, 3960279540u, 3875720191u, 3908753406u, 4093419030u, 4143577849u, 537191412u, 419039231u, 4159887591u, 34151179u, 454223622u, 4061855999u, 16838655u, 218566156u, 16647424u, 117970440u, 151136261u, 14996754u, 3973189628u, 4293263861u, 268186890u, 69017338u, 251397109u, 352187160u, 4177462807u, 4278917378u, 386136828u, 167906055u, 4161076215u, 4074757095u, 3386119916u, 13957869u, 334969359u, 51651841u, 1006563065u, 4111466771u, 3843095821u, 4176336123u, 4009490940u, 4243324653u, 269022721u, 185073672u, 184821257u, 4178115058u, 4194176775u, 4246270472u, 535883272u, 3759459828u, 3843218987u, 286588394u, 1157039872u, 417799666u, 3892453916u, 3926055941u, 4278254069u, 4243523062u, 4261999865u, 184349154u, 3940548081u, 551226362u, 3958969868u, 118096649u, 369758214u, 68092165u, 268960002u, 4179170032u, 4045403113u, 4211080720u, 4210882810u, 34156530u, 453436914u, 118298903u, 4059826437u, 4076927990u, 217510393u, 4144234484u, 4244764420u, 4228194818u, 3790663420u, 16390413u, 67569661u, 202252284u, 335539725u, 118100733u, 168626677u, 167504915u, 4026208014u, 49219069u, 4176540414u, 4194303231u, 250544123u, 133891082u, 4177788162u, 3825209377u, 3724872989u, 3724081368u, 50190569u, 4294241029u, 100532222u, 4144035580u, 134083317u, 84216325u, 3942120959u, 50468362u, 84999434u, 4277466366u, 201722872u, 50394884u, 33230588u, 17751785u, 235211256u, 49871099u, 4244634384u, 66319360u, 67696654u, 134087173u, 351146237u, 66980089u, 151320322u, 4262394622u, 16716806u, 335808258u, 302384140u, 34279166u, 4093187589u, 4228845573u, 587859721u, 4245489178u, 4009948696u, 99479543u, 3809474805u, 351479815u, 65745126u, 116723184u, 151518211u, 4060154606u, 32573450u, 4192853007u, 283697660u, 84999934u, 133821920u, 50463470u, 4125749247u, 4261742834u, 134805243u, 68035827u, 285739773u, 4143580671u, 4278781727u, 4196473078u, 3371438095u, 4160870126u, 4094224674u, 4210556945u, 4159964660u, 418190347u, 100537058u, 4111602445u, 823127543u, 133626395u, 3740666633u, 167249135u, 4043044607u, 14681834u, 1573854u, 167637756u, 235074805u, 81928182u, 252377082u, 66188519u, 99621121u, 217710070u, 4092659462u, 4261873645u, 3841470706u, 16061182u, 150287888u, 100317964u, 789109744u, 819726548u, 119411133u, 4110008626u, 302964462u, 4142987252u, 454095815u, 845839u, 4277137911u, 134344452u, 3892770568u, 3842372653u, 3235896085u, 4260073409u, 3560153824u, 3299271140u, 2361421057u, 654334729u, 3079718408u, 892334859u, 4007725586u, 4010335199u, 657942036u, 3772832270u, 2150309124u, 4076796699u, 3888367358u, 4212985118u, 4113752830u, 3708989417u, 119968779u, 4087709910u, 3002935222u, 382486293u, 920794323u, 347299098u, 2877946904u, 2127292862u, 3766573785u, 469557455u, 794567149u, 81134320u, 437856012u, 3994355403u, 165064897u, 211677991u, 3794137437u, 2370291694u, 3627074557u, 3122257402u, 3813183972u, 3640397006u, 3287485668u, 3937805085u, 3504738309u, 2952333780u, 3792372693u, 1288839486u, 2931348008u, 3574257439u, 506184154u, 3691624493u, 4159671646u, 3883057839u, 571897809u, 4120498602u, 3396157723u, 549730102u, 1806891588u, 1338572577u, 801242597u, 4027812224u, 4246669815u, 3891535774u, 488776086u, 252708097u, 453057028u, 336266501u, 595460u, 550574590u, 2919105044u, 620896781u, 79571197u, 437381380u, 3943833339u, 33677515u, 3960936712u, 15592701u, 116977657u, 4228384503u, 49743360u, 4261417222u, 4044487415u, 4044029432u, 184940022u, 4227999763u, 404625663u, 4230874112u, 3842113797u, 4211471087u, 4090027525u, 533136911u, 217909509u, 4060148487u, 4075821047u, 4277733116u, 4212459269u, 4075426826u, 1707726858u, 67054108u, 552543467u, 4109042389u, 4242074368u, 4040750841u, 4026064891u, 185466364u, 596728u, 33817313u, 3927504657u, 4060016900u, 3993316084u, 4293846772u, 3975806980u, 48893441u, 3372948477u, 637338617u, 4173597184u, 3942776320u, 151716097u, 4259901945u, 4026200844u, 53342463u, 420811759u, 4227785447u, 3743021072u, 538052094u, 468647681u, 587405065u, 3875943689u, 84473352u, 638519805u, 201457667u, 134873857u, 4093838595u, 4144226558u, 4210360337u, 4077122311u, 4109956615u, 4193708289u, 4043503600u, 34075894u, 4193978093u, 367980543u, 51382534u, 4143450118u, 17306605u, 3925932793u, 100668159u, 4076733712u, 4194502645u, 151714566u, 4143972071u, 4177852416u, 33879827u, 4010674179u, 4143578367u, 133424133u, 4076802312u, 16186371u, 4278454287u, 4261475582u, 4144832508u, 687661831u, 4278457862u, 4227199737u, 16321285u, 4144236038u, 4160355578u, 4143704064u, 16778502u, 4210819332u, 151195139u, 4144431378u, 66713603u, 285481979u, 101118461u, 4126804226u, 4228058128u, 3942522120u, 4144103942u, 16448264u, 4076867582u, 538049555u, 67108869u, 4143708163u, 4127004159u, 4110415114u, 4077911293u, 16848381u, 117638141u, 4278386174u, 4262268690u, 66328838u, 4094953981u, 301864957u, 284489458u, 4212456176u, 4197053173u, 304535542u, 3724338403u, 137880813u, 3690917619u, 1039387642u, 3908364056u, 4227850784u, 251262979u, 4094099459u, 4212719860u, 50269697u, 184163586u, 3859219455u, 134814491u, 4192409368u, 49227027u, 4244180990u, 336474658u, 3924494851u, 3857710339u, 114359806u, 483856427u, 47970841u, 3993896207u, 118424572u, 3708418808u, 52678654u, 101053178u, 3942718704u, 4276212386u, 185922015u, 4109698803u, 1038410234u, 4210426395u, 3960268816u, 101579253u, 117574907u, 49872363u, 4263375122u, 1182736u, 185473288u, 386137095u, 3791854076u, 4228639003u, 419361795u, 4062575617u, 286061815u, 4094756868u, 554700286u, 216403966u, 4228255244u, 4194762752u, 167184636u, 234945791u, 4261287437u, 284687627u, 3036551939u, 268957925u, 4143577860u, 117110796u, 201394695u, 302119695u, 4294184706u, 3910539252u, 3942771707u, 4142530572u, 3892570894u, 3959621112u, 66973951u, 4126602734u, 4093251321u, 4210556660u, 335476222u, 4111202807u, 4110027522u, 4261549048u, 3840994807u, 66919421u, 17235974u, 201134834u, 251786999u, 134613508u, 50141441u, 980254u, 118162437u, 4193847814u, 167898619u, 3909290510u, 150405373u, 4177001222u, 4262129401u, 3875605007u, 98688776u, 4209444122u, 4192465912u, 16515079u, 66325498u, 15726328u, 4227722230u, 66711556u, 3975740667u, 251398391u, 4228255242u, 4227730686u, 67640581u, 33093624u, 4059368439u, 151383563u, 4246214663u, 4146131958u, 68221705u, 4144037645u, 538642437u, 4227594752u, 117375991u, 66973684u, 101380614u, 117433073u, 4143786490u, 194567u, 4210683656u, 167578393u, 4059042568u);
+const uint _1089[128] = uint[](4026989042u, 452722946u, 68296957u, 151190779u, 4110677997u, 538571517u, 3993105147u, 4176676096u, 234880512u, 536089092u, 4077647332u, 4127332345u, 516763657u, 266204428u, 1221789696u, 4157733649u, 4210623488u, 4026992902u, 233827562u, 67433962u, 33488397u, 4245289973u, 168753661u, 4194897407u, 4210948339u, 251263743u, 83884304u, 4245029374u, 83755263u, 4127788049u, 118422527u, 4027056901u, 3976526064u, 486343427u, 34742778u, 184548089u, 4277537011u, 504952580u, 4144626947u, 49484016u, 301533187u, 569513736u, 4178443750u, 4211219439u, 183055367u, 417845772u, 568846586u, 3958947349u, 16912913u, 3976599041u, 68350702u, 201459455u, 4294768908u, 34142454u, 202046719u, 4178119158u, 83690743u, 234619644u, 17561359u, 395790u, 33488896u, 4194831884u, 50791420u, 4077127427u, 4026858225u, 519766276u, 18162426u, 218234614u, 3976066804u, 471791612u, 4143969795u, 4092393982u, 16055817u, 452467971u, 4178180590u, 4059497207u, 820248331u, 871687953u, 620100084u, 386136072u, 4227594494u, 3909752573u, 4076010456u, 17170181u, 4294901267u, 4228578296u, 202504191u, 4178054649u, 4227791342u, 117440768u, 150796811u, 4177984510u, 4278122496u, 4227991051u, 4194699003u, 4194501889u, 4026857970u, 452657666u, 85206013u, 167836665u, 4142859253u, 320469251u, 4127718408u, 4209770992u, 65929481u, 351672837u, 4178311922u, 4109960175u, 520101912u, 1393089289u, 351593721u, 287167513u, 4227137274u, 4059957247u, 4192529380u, 201651453u, 4244437264u, 17365497u, 235797758u, 4161276912u, 83756787u, 117574397u, 84539657u, 4245030157u, 4177196030u, 4261346574u, 66780159u, 4144430583u);
+const ivec2 _1095[4] = ivec2[](ivec2(0), ivec2(1, 0), ivec2(0, 1), ivec2(1));
+
+layout(set = 0, binding = 141, std430) buffer type_RWByteAddressBuffer
+{
+    uint _m0[];
+} ScratchBuffer;
+
+layout(set = 0, binding = 257, std140) uniform type_MLSR_Optimized_Constants
+{
+    vec2 inv_size;
+    vec2 scale;
+    vec2 inv_scale;
+    vec2 jitter;
+    vec2 mv_scale;
+    vec2 tex_size;
+    vec2 max_renderSize;
+    vec2 fMotionVectorJitterCancellation;
+    uint width;
+    uint height;
+    uint reset;
+    uint width_lr;
+    uint height_lr;
+    float preExposure;
+    float previous_preExposure;
+    uint rcas_enabled;
+    float rcas_sharpness;
+    float pad;
+} MLSR_Optimized_Constants;
+
+layout(set = 0, binding = 3) uniform texture2D r_input_color;
+layout(set = 0, binding = 9) uniform texture2D r_reprojected_color;
+layout(set = 0, binding = 17) uniform texture2D r_auto_exposure_texture;
+layout(set = 0, binding = 129) uniform writeonly image2D rw_history_color;
+layout(set = 0, binding = 130) uniform writeonly image2D rw_mlsr_output_color;
+layout(set = 0, binding = 134, rgba32f) uniform writeonly image2D rw_recurrent_0;
+
+spirv_instruction(set = "GLSL.std.450", id = 80) float spvNMax(float, float);
+spirv_instruction(set = "GLSL.std.450", id = 80) vec2 spvNMax(vec2, vec2);
+spirv_instruction(set = "GLSL.std.450", id = 80) vec3 spvNMax(vec3, vec3);
+spirv_instruction(set = "GLSL.std.450", id = 80) vec4 spvNMax(vec4, vec4);
+
+spirv_instruction (extensions = ["SPV_KHR_integer_dot_product"], capabilities = [6019, 6018], id = 4450)
+int spvSDot_int_uint_uint(uint arg0, uint arg1, spirv_literal uint packedFormat);
+
+void main()
+{
+    do
+    {
+        uvec2 _1200 = uvec2(ivec2(int(MLSR_Optimized_Constants.width), int(MLSR_Optimized_Constants.height)) / ivec2(2));
+        uint _1203 = gl_LocalInvocationID.x >> 2u;
+        uvec2 _1216 = uvec2(((_1203 % 8u) << 1u) | (gl_LocalInvocationID.x & 1u), ((_1203 / 8u) << 1u) | ((gl_LocalInvocationID.x & 3u) >> 1u)) + (gl_WorkGroupID.xy * uvec2(16u));
+        if (any(greaterThanEqual(_1216, _1200)))
+        {
+            break;
+        }
+        ivec4 _1225 = ivec4(int(_1216.x), int(_1216.y), 0, 0);
+        ivec4 _1226 = _1225 - ivec4(1, 1, 0, 0);
+        int _1181[16];
+        _1181[0u] = 12;
+        _1181[1u] = -562;
+        _1181[2u] = -410;
+        _1181[3u] = 231;
+        _1181[4u] = -757;
+        _1181[5u] = 66;
+        _1181[6u] = 685;
+        _1181[7u] = -89;
+        _1181[8u] = 305;
+        _1181[9u] = 1062;
+        _1181[10u] = 514;
+        _1181[11u] = -1024;
+        _1181[12u] = -225;
+        _1181[13u] = -234;
+        _1181[14u] = -377;
+        _1181[15u] = -271;
+        ivec2 _1243 = _1226.xy;
+        {
+            ivec2 tc = ivec2(_1226.xy) + ivec2(0, 0);
+            if (all(greaterThanEqual(tc, ivec2(0))) && all(lessThan(uvec2(tc), _1200)))
+            {
+                uint ba = (((16u * uint(tc.x + 1)) + (15392u * uint(tc.y + 1))) + 16684928u) >> 2u;
+                uint a0 = ScratchBuffer._m0[ba + 0u];
+                uint a1 = ScratchBuffer._m0[ba + 1u];
+                uint a2 = ScratchBuffer._m0[ba + 2u];
+                uint a3 = ScratchBuffer._m0[ba + 3u];
+                _1181[0u] = spvSDot_int_uint_uint(a0, _1088[0u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a1, _1088[1u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a2, _1088[2u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a3, _1088[3u], 0) + _1181[0u];
+                _1181[1u] = spvSDot_int_uint_uint(a0, _1088[4u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a1, _1088[5u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a2, _1088[6u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a3, _1088[7u], 0) + _1181[1u];
+                _1181[2u] = spvSDot_int_uint_uint(a0, _1088[8u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a1, _1088[9u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a2, _1088[10u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a3, _1088[11u], 0) + _1181[2u];
+                _1181[3u] = spvSDot_int_uint_uint(a0, _1088[12u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a1, _1088[13u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a2, _1088[14u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a3, _1088[15u], 0) + _1181[3u];
+                _1181[4u] = spvSDot_int_uint_uint(a0, _1088[16u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a1, _1088[17u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a2, _1088[18u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a3, _1088[19u], 0) + _1181[4u];
+                _1181[5u] = spvSDot_int_uint_uint(a0, _1088[20u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a1, _1088[21u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a2, _1088[22u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a3, _1088[23u], 0) + _1181[5u];
+                _1181[6u] = spvSDot_int_uint_uint(a0, _1088[24u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a1, _1088[25u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a2, _1088[26u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a3, _1088[27u], 0) + _1181[6u];
+                _1181[7u] = spvSDot_int_uint_uint(a0, _1088[28u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a1, _1088[29u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a2, _1088[30u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a3, _1088[31u], 0) + _1181[7u];
+                _1181[8u] = spvSDot_int_uint_uint(a0, _1088[32u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a1, _1088[33u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a2, _1088[34u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a3, _1088[35u], 0) + _1181[8u];
+                _1181[9u] = spvSDot_int_uint_uint(a0, _1088[36u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a1, _1088[37u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a2, _1088[38u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a3, _1088[39u], 0) + _1181[9u];
+                _1181[10u] = spvSDot_int_uint_uint(a0, _1088[40u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a1, _1088[41u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a2, _1088[42u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a3, _1088[43u], 0) + _1181[10u];
+                _1181[11u] = spvSDot_int_uint_uint(a0, _1088[44u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a1, _1088[45u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a2, _1088[46u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a3, _1088[47u], 0) + _1181[11u];
+                _1181[12u] = spvSDot_int_uint_uint(a0, _1088[48u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a1, _1088[49u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a2, _1088[50u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a3, _1088[51u], 0) + _1181[12u];
+                _1181[13u] = spvSDot_int_uint_uint(a0, _1088[52u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a1, _1088[53u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a2, _1088[54u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a3, _1088[55u], 0) + _1181[13u];
+                _1181[14u] = spvSDot_int_uint_uint(a0, _1088[56u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a1, _1088[57u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a2, _1088[58u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a3, _1088[59u], 0) + _1181[14u];
+                _1181[15u] = spvSDot_int_uint_uint(a0, _1088[60u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a1, _1088[61u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a2, _1088[62u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a3, _1088[63u], 0) + _1181[15u];
+            }
+        }
+        {
+            ivec2 tc = ivec2(_1226.xy) + ivec2(1, 0);
+            if (all(greaterThanEqual(tc, ivec2(0))) && all(lessThan(uvec2(tc), _1200)))
+            {
+                uint ba = (((16u * uint(tc.x + 1)) + (15392u * uint(tc.y + 1))) + 16684928u) >> 2u;
+                uint a0 = ScratchBuffer._m0[ba + 0u];
+                uint a1 = ScratchBuffer._m0[ba + 1u];
+                uint a2 = ScratchBuffer._m0[ba + 2u];
+                uint a3 = ScratchBuffer._m0[ba + 3u];
+                _1181[0u] = spvSDot_int_uint_uint(a0, _1088[64u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a1, _1088[65u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a2, _1088[66u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a3, _1088[67u], 0) + _1181[0u];
+                _1181[1u] = spvSDot_int_uint_uint(a0, _1088[68u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a1, _1088[69u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a2, _1088[70u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a3, _1088[71u], 0) + _1181[1u];
+                _1181[2u] = spvSDot_int_uint_uint(a0, _1088[72u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a1, _1088[73u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a2, _1088[74u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a3, _1088[75u], 0) + _1181[2u];
+                _1181[3u] = spvSDot_int_uint_uint(a0, _1088[76u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a1, _1088[77u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a2, _1088[78u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a3, _1088[79u], 0) + _1181[3u];
+                _1181[4u] = spvSDot_int_uint_uint(a0, _1088[80u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a1, _1088[81u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a2, _1088[82u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a3, _1088[83u], 0) + _1181[4u];
+                _1181[5u] = spvSDot_int_uint_uint(a0, _1088[84u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a1, _1088[85u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a2, _1088[86u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a3, _1088[87u], 0) + _1181[5u];
+                _1181[6u] = spvSDot_int_uint_uint(a0, _1088[88u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a1, _1088[89u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a2, _1088[90u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a3, _1088[91u], 0) + _1181[6u];
+                _1181[7u] = spvSDot_int_uint_uint(a0, _1088[92u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a1, _1088[93u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a2, _1088[94u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a3, _1088[95u], 0) + _1181[7u];
+                _1181[8u] = spvSDot_int_uint_uint(a0, _1088[96u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a1, _1088[97u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a2, _1088[98u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a3, _1088[99u], 0) + _1181[8u];
+                _1181[9u] = spvSDot_int_uint_uint(a0, _1088[100u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a1, _1088[101u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a2, _1088[102u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a3, _1088[103u], 0) + _1181[9u];
+                _1181[10u] = spvSDot_int_uint_uint(a0, _1088[104u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a1, _1088[105u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a2, _1088[106u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a3, _1088[107u], 0) + _1181[10u];
+                _1181[11u] = spvSDot_int_uint_uint(a0, _1088[108u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a1, _1088[109u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a2, _1088[110u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a3, _1088[111u], 0) + _1181[11u];
+                _1181[12u] = spvSDot_int_uint_uint(a0, _1088[112u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a1, _1088[113u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a2, _1088[114u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a3, _1088[115u], 0) + _1181[12u];
+                _1181[13u] = spvSDot_int_uint_uint(a0, _1088[116u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a1, _1088[117u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a2, _1088[118u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a3, _1088[119u], 0) + _1181[13u];
+                _1181[14u] = spvSDot_int_uint_uint(a0, _1088[120u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a1, _1088[121u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a2, _1088[122u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a3, _1088[123u], 0) + _1181[14u];
+                _1181[15u] = spvSDot_int_uint_uint(a0, _1088[124u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a1, _1088[125u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a2, _1088[126u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a3, _1088[127u], 0) + _1181[15u];
+            }
+        }
+        {
+            ivec2 tc = ivec2(_1226.xy) + ivec2(2, 0);
+            if (all(greaterThanEqual(tc, ivec2(0))) && all(lessThan(uvec2(tc), _1200)))
+            {
+                uint ba = (((16u * uint(tc.x + 1)) + (15392u * uint(tc.y + 1))) + 16684928u) >> 2u;
+                uint a0 = ScratchBuffer._m0[ba + 0u];
+                uint a1 = ScratchBuffer._m0[ba + 1u];
+                uint a2 = ScratchBuffer._m0[ba + 2u];
+                uint a3 = ScratchBuffer._m0[ba + 3u];
+                _1181[0u] = spvSDot_int_uint_uint(a0, _1088[128u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a1, _1088[129u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a2, _1088[130u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a3, _1088[131u], 0) + _1181[0u];
+                _1181[1u] = spvSDot_int_uint_uint(a0, _1088[132u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a1, _1088[133u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a2, _1088[134u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a3, _1088[135u], 0) + _1181[1u];
+                _1181[2u] = spvSDot_int_uint_uint(a0, _1088[136u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a1, _1088[137u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a2, _1088[138u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a3, _1088[139u], 0) + _1181[2u];
+                _1181[3u] = spvSDot_int_uint_uint(a0, _1088[140u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a1, _1088[141u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a2, _1088[142u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a3, _1088[143u], 0) + _1181[3u];
+                _1181[4u] = spvSDot_int_uint_uint(a0, _1088[144u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a1, _1088[145u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a2, _1088[146u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a3, _1088[147u], 0) + _1181[4u];
+                _1181[5u] = spvSDot_int_uint_uint(a0, _1088[148u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a1, _1088[149u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a2, _1088[150u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a3, _1088[151u], 0) + _1181[5u];
+                _1181[6u] = spvSDot_int_uint_uint(a0, _1088[152u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a1, _1088[153u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a2, _1088[154u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a3, _1088[155u], 0) + _1181[6u];
+                _1181[7u] = spvSDot_int_uint_uint(a0, _1088[156u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a1, _1088[157u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a2, _1088[158u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a3, _1088[159u], 0) + _1181[7u];
+                _1181[8u] = spvSDot_int_uint_uint(a0, _1088[160u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a1, _1088[161u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a2, _1088[162u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a3, _1088[163u], 0) + _1181[8u];
+                _1181[9u] = spvSDot_int_uint_uint(a0, _1088[164u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a1, _1088[165u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a2, _1088[166u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a3, _1088[167u], 0) + _1181[9u];
+                _1181[10u] = spvSDot_int_uint_uint(a0, _1088[168u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a1, _1088[169u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a2, _1088[170u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a3, _1088[171u], 0) + _1181[10u];
+                _1181[11u] = spvSDot_int_uint_uint(a0, _1088[172u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a1, _1088[173u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a2, _1088[174u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a3, _1088[175u], 0) + _1181[11u];
+                _1181[12u] = spvSDot_int_uint_uint(a0, _1088[176u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a1, _1088[177u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a2, _1088[178u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a3, _1088[179u], 0) + _1181[12u];
+                _1181[13u] = spvSDot_int_uint_uint(a0, _1088[180u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a1, _1088[181u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a2, _1088[182u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a3, _1088[183u], 0) + _1181[13u];
+                _1181[14u] = spvSDot_int_uint_uint(a0, _1088[184u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a1, _1088[185u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a2, _1088[186u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a3, _1088[187u], 0) + _1181[14u];
+                _1181[15u] = spvSDot_int_uint_uint(a0, _1088[188u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a1, _1088[189u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a2, _1088[190u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a3, _1088[191u], 0) + _1181[15u];
+            }
+        }
+        {
+            ivec2 tc = ivec2(_1226.xy) + ivec2(0, 1);
+            if (all(greaterThanEqual(tc, ivec2(0))) && all(lessThan(uvec2(tc), _1200)))
+            {
+                uint ba = (((16u * uint(tc.x + 1)) + (15392u * uint(tc.y + 1))) + 16684928u) >> 2u;
+                uint a0 = ScratchBuffer._m0[ba + 0u];
+                uint a1 = ScratchBuffer._m0[ba + 1u];
+                uint a2 = ScratchBuffer._m0[ba + 2u];
+                uint a3 = ScratchBuffer._m0[ba + 3u];
+                _1181[0u] = spvSDot_int_uint_uint(a0, _1088[192u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a1, _1088[193u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a2, _1088[194u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a3, _1088[195u], 0) + _1181[0u];
+                _1181[1u] = spvSDot_int_uint_uint(a0, _1088[196u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a1, _1088[197u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a2, _1088[198u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a3, _1088[199u], 0) + _1181[1u];
+                _1181[2u] = spvSDot_int_uint_uint(a0, _1088[200u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a1, _1088[201u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a2, _1088[202u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a3, _1088[203u], 0) + _1181[2u];
+                _1181[3u] = spvSDot_int_uint_uint(a0, _1088[204u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a1, _1088[205u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a2, _1088[206u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a3, _1088[207u], 0) + _1181[3u];
+                _1181[4u] = spvSDot_int_uint_uint(a0, _1088[208u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a1, _1088[209u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a2, _1088[210u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a3, _1088[211u], 0) + _1181[4u];
+                _1181[5u] = spvSDot_int_uint_uint(a0, _1088[212u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a1, _1088[213u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a2, _1088[214u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a3, _1088[215u], 0) + _1181[5u];
+                _1181[6u] = spvSDot_int_uint_uint(a0, _1088[216u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a1, _1088[217u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a2, _1088[218u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a3, _1088[219u], 0) + _1181[6u];
+                _1181[7u] = spvSDot_int_uint_uint(a0, _1088[220u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a1, _1088[221u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a2, _1088[222u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a3, _1088[223u], 0) + _1181[7u];
+                _1181[8u] = spvSDot_int_uint_uint(a0, _1088[224u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a1, _1088[225u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a2, _1088[226u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a3, _1088[227u], 0) + _1181[8u];
+                _1181[9u] = spvSDot_int_uint_uint(a0, _1088[228u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a1, _1088[229u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a2, _1088[230u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a3, _1088[231u], 0) + _1181[9u];
+                _1181[10u] = spvSDot_int_uint_uint(a0, _1088[232u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a1, _1088[233u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a2, _1088[234u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a3, _1088[235u], 0) + _1181[10u];
+                _1181[11u] = spvSDot_int_uint_uint(a0, _1088[236u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a1, _1088[237u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a2, _1088[238u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a3, _1088[239u], 0) + _1181[11u];
+                _1181[12u] = spvSDot_int_uint_uint(a0, _1088[240u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a1, _1088[241u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a2, _1088[242u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a3, _1088[243u], 0) + _1181[12u];
+                _1181[13u] = spvSDot_int_uint_uint(a0, _1088[244u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a1, _1088[245u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a2, _1088[246u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a3, _1088[247u], 0) + _1181[13u];
+                _1181[14u] = spvSDot_int_uint_uint(a0, _1088[248u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a1, _1088[249u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a2, _1088[250u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a3, _1088[251u], 0) + _1181[14u];
+                _1181[15u] = spvSDot_int_uint_uint(a0, _1088[252u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a1, _1088[253u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a2, _1088[254u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a3, _1088[255u], 0) + _1181[15u];
+            }
+        }
+        {
+            ivec2 tc = ivec2(_1226.xy) + ivec2(1, 1);
+            if (all(greaterThanEqual(tc, ivec2(0))) && all(lessThan(uvec2(tc), _1200)))
+            {
+                uint ba = (((16u * uint(tc.x + 1)) + (15392u * uint(tc.y + 1))) + 16684928u) >> 2u;
+                uint a0 = ScratchBuffer._m0[ba + 0u];
+                uint a1 = ScratchBuffer._m0[ba + 1u];
+                uint a2 = ScratchBuffer._m0[ba + 2u];
+                uint a3 = ScratchBuffer._m0[ba + 3u];
+                _1181[0u] = spvSDot_int_uint_uint(a0, _1088[256u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a1, _1088[257u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a2, _1088[258u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a3, _1088[259u], 0) + _1181[0u];
+                _1181[1u] = spvSDot_int_uint_uint(a0, _1088[260u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a1, _1088[261u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a2, _1088[262u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a3, _1088[263u], 0) + _1181[1u];
+                _1181[2u] = spvSDot_int_uint_uint(a0, _1088[264u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a1, _1088[265u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a2, _1088[266u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a3, _1088[267u], 0) + _1181[2u];
+                _1181[3u] = spvSDot_int_uint_uint(a0, _1088[268u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a1, _1088[269u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a2, _1088[270u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a3, _1088[271u], 0) + _1181[3u];
+                _1181[4u] = spvSDot_int_uint_uint(a0, _1088[272u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a1, _1088[273u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a2, _1088[274u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a3, _1088[275u], 0) + _1181[4u];
+                _1181[5u] = spvSDot_int_uint_uint(a0, _1088[276u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a1, _1088[277u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a2, _1088[278u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a3, _1088[279u], 0) + _1181[5u];
+                _1181[6u] = spvSDot_int_uint_uint(a0, _1088[280u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a1, _1088[281u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a2, _1088[282u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a3, _1088[283u], 0) + _1181[6u];
+                _1181[7u] = spvSDot_int_uint_uint(a0, _1088[284u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a1, _1088[285u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a2, _1088[286u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a3, _1088[287u], 0) + _1181[7u];
+                _1181[8u] = spvSDot_int_uint_uint(a0, _1088[288u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a1, _1088[289u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a2, _1088[290u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a3, _1088[291u], 0) + _1181[8u];
+                _1181[9u] = spvSDot_int_uint_uint(a0, _1088[292u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a1, _1088[293u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a2, _1088[294u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a3, _1088[295u], 0) + _1181[9u];
+                _1181[10u] = spvSDot_int_uint_uint(a0, _1088[296u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a1, _1088[297u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a2, _1088[298u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a3, _1088[299u], 0) + _1181[10u];
+                _1181[11u] = spvSDot_int_uint_uint(a0, _1088[300u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a1, _1088[301u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a2, _1088[302u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a3, _1088[303u], 0) + _1181[11u];
+                _1181[12u] = spvSDot_int_uint_uint(a0, _1088[304u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a1, _1088[305u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a2, _1088[306u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a3, _1088[307u], 0) + _1181[12u];
+                _1181[13u] = spvSDot_int_uint_uint(a0, _1088[308u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a1, _1088[309u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a2, _1088[310u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a3, _1088[311u], 0) + _1181[13u];
+                _1181[14u] = spvSDot_int_uint_uint(a0, _1088[312u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a1, _1088[313u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a2, _1088[314u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a3, _1088[315u], 0) + _1181[14u];
+                _1181[15u] = spvSDot_int_uint_uint(a0, _1088[316u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a1, _1088[317u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a2, _1088[318u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a3, _1088[319u], 0) + _1181[15u];
+            }
+        }
+        {
+            ivec2 tc = ivec2(_1226.xy) + ivec2(2, 1);
+            if (all(greaterThanEqual(tc, ivec2(0))) && all(lessThan(uvec2(tc), _1200)))
+            {
+                uint ba = (((16u * uint(tc.x + 1)) + (15392u * uint(tc.y + 1))) + 16684928u) >> 2u;
+                uint a0 = ScratchBuffer._m0[ba + 0u];
+                uint a1 = ScratchBuffer._m0[ba + 1u];
+                uint a2 = ScratchBuffer._m0[ba + 2u];
+                uint a3 = ScratchBuffer._m0[ba + 3u];
+                _1181[0u] = spvSDot_int_uint_uint(a0, _1088[320u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a1, _1088[321u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a2, _1088[322u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a3, _1088[323u], 0) + _1181[0u];
+                _1181[1u] = spvSDot_int_uint_uint(a0, _1088[324u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a1, _1088[325u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a2, _1088[326u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a3, _1088[327u], 0) + _1181[1u];
+                _1181[2u] = spvSDot_int_uint_uint(a0, _1088[328u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a1, _1088[329u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a2, _1088[330u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a3, _1088[331u], 0) + _1181[2u];
+                _1181[3u] = spvSDot_int_uint_uint(a0, _1088[332u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a1, _1088[333u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a2, _1088[334u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a3, _1088[335u], 0) + _1181[3u];
+                _1181[4u] = spvSDot_int_uint_uint(a0, _1088[336u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a1, _1088[337u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a2, _1088[338u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a3, _1088[339u], 0) + _1181[4u];
+                _1181[5u] = spvSDot_int_uint_uint(a0, _1088[340u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a1, _1088[341u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a2, _1088[342u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a3, _1088[343u], 0) + _1181[5u];
+                _1181[6u] = spvSDot_int_uint_uint(a0, _1088[344u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a1, _1088[345u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a2, _1088[346u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a3, _1088[347u], 0) + _1181[6u];
+                _1181[7u] = spvSDot_int_uint_uint(a0, _1088[348u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a1, _1088[349u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a2, _1088[350u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a3, _1088[351u], 0) + _1181[7u];
+                _1181[8u] = spvSDot_int_uint_uint(a0, _1088[352u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a1, _1088[353u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a2, _1088[354u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a3, _1088[355u], 0) + _1181[8u];
+                _1181[9u] = spvSDot_int_uint_uint(a0, _1088[356u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a1, _1088[357u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a2, _1088[358u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a3, _1088[359u], 0) + _1181[9u];
+                _1181[10u] = spvSDot_int_uint_uint(a0, _1088[360u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a1, _1088[361u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a2, _1088[362u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a3, _1088[363u], 0) + _1181[10u];
+                _1181[11u] = spvSDot_int_uint_uint(a0, _1088[364u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a1, _1088[365u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a2, _1088[366u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a3, _1088[367u], 0) + _1181[11u];
+                _1181[12u] = spvSDot_int_uint_uint(a0, _1088[368u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a1, _1088[369u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a2, _1088[370u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a3, _1088[371u], 0) + _1181[12u];
+                _1181[13u] = spvSDot_int_uint_uint(a0, _1088[372u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a1, _1088[373u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a2, _1088[374u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a3, _1088[375u], 0) + _1181[13u];
+                _1181[14u] = spvSDot_int_uint_uint(a0, _1088[376u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a1, _1088[377u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a2, _1088[378u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a3, _1088[379u], 0) + _1181[14u];
+                _1181[15u] = spvSDot_int_uint_uint(a0, _1088[380u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a1, _1088[381u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a2, _1088[382u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a3, _1088[383u], 0) + _1181[15u];
+            }
+        }
+        {
+            ivec2 tc = ivec2(_1226.xy) + ivec2(0, 2);
+            if (all(greaterThanEqual(tc, ivec2(0))) && all(lessThan(uvec2(tc), _1200)))
+            {
+                uint ba = (((16u * uint(tc.x + 1)) + (15392u * uint(tc.y + 1))) + 16684928u) >> 2u;
+                uint a0 = ScratchBuffer._m0[ba + 0u];
+                uint a1 = ScratchBuffer._m0[ba + 1u];
+                uint a2 = ScratchBuffer._m0[ba + 2u];
+                uint a3 = ScratchBuffer._m0[ba + 3u];
+                _1181[0u] = spvSDot_int_uint_uint(a0, _1088[384u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a1, _1088[385u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a2, _1088[386u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a3, _1088[387u], 0) + _1181[0u];
+                _1181[1u] = spvSDot_int_uint_uint(a0, _1088[388u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a1, _1088[389u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a2, _1088[390u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a3, _1088[391u], 0) + _1181[1u];
+                _1181[2u] = spvSDot_int_uint_uint(a0, _1088[392u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a1, _1088[393u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a2, _1088[394u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a3, _1088[395u], 0) + _1181[2u];
+                _1181[3u] = spvSDot_int_uint_uint(a0, _1088[396u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a1, _1088[397u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a2, _1088[398u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a3, _1088[399u], 0) + _1181[3u];
+                _1181[4u] = spvSDot_int_uint_uint(a0, _1088[400u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a1, _1088[401u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a2, _1088[402u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a3, _1088[403u], 0) + _1181[4u];
+                _1181[5u] = spvSDot_int_uint_uint(a0, _1088[404u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a1, _1088[405u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a2, _1088[406u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a3, _1088[407u], 0) + _1181[5u];
+                _1181[6u] = spvSDot_int_uint_uint(a0, _1088[408u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a1, _1088[409u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a2, _1088[410u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a3, _1088[411u], 0) + _1181[6u];
+                _1181[7u] = spvSDot_int_uint_uint(a0, _1088[412u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a1, _1088[413u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a2, _1088[414u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a3, _1088[415u], 0) + _1181[7u];
+                _1181[8u] = spvSDot_int_uint_uint(a0, _1088[416u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a1, _1088[417u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a2, _1088[418u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a3, _1088[419u], 0) + _1181[8u];
+                _1181[9u] = spvSDot_int_uint_uint(a0, _1088[420u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a1, _1088[421u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a2, _1088[422u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a3, _1088[423u], 0) + _1181[9u];
+                _1181[10u] = spvSDot_int_uint_uint(a0, _1088[424u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a1, _1088[425u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a2, _1088[426u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a3, _1088[427u], 0) + _1181[10u];
+                _1181[11u] = spvSDot_int_uint_uint(a0, _1088[428u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a1, _1088[429u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a2, _1088[430u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a3, _1088[431u], 0) + _1181[11u];
+                _1181[12u] = spvSDot_int_uint_uint(a0, _1088[432u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a1, _1088[433u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a2, _1088[434u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a3, _1088[435u], 0) + _1181[12u];
+                _1181[13u] = spvSDot_int_uint_uint(a0, _1088[436u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a1, _1088[437u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a2, _1088[438u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a3, _1088[439u], 0) + _1181[13u];
+                _1181[14u] = spvSDot_int_uint_uint(a0, _1088[440u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a1, _1088[441u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a2, _1088[442u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a3, _1088[443u], 0) + _1181[14u];
+                _1181[15u] = spvSDot_int_uint_uint(a0, _1088[444u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a1, _1088[445u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a2, _1088[446u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a3, _1088[447u], 0) + _1181[15u];
+            }
+        }
+        {
+            ivec2 tc = ivec2(_1226.xy) + ivec2(1, 2);
+            if (all(greaterThanEqual(tc, ivec2(0))) && all(lessThan(uvec2(tc), _1200)))
+            {
+                uint ba = (((16u * uint(tc.x + 1)) + (15392u * uint(tc.y + 1))) + 16684928u) >> 2u;
+                uint a0 = ScratchBuffer._m0[ba + 0u];
+                uint a1 = ScratchBuffer._m0[ba + 1u];
+                uint a2 = ScratchBuffer._m0[ba + 2u];
+                uint a3 = ScratchBuffer._m0[ba + 3u];
+                _1181[0u] = spvSDot_int_uint_uint(a0, _1088[448u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a1, _1088[449u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a2, _1088[450u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a3, _1088[451u], 0) + _1181[0u];
+                _1181[1u] = spvSDot_int_uint_uint(a0, _1088[452u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a1, _1088[453u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a2, _1088[454u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a3, _1088[455u], 0) + _1181[1u];
+                _1181[2u] = spvSDot_int_uint_uint(a0, _1088[456u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a1, _1088[457u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a2, _1088[458u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a3, _1088[459u], 0) + _1181[2u];
+                _1181[3u] = spvSDot_int_uint_uint(a0, _1088[460u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a1, _1088[461u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a2, _1088[462u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a3, _1088[463u], 0) + _1181[3u];
+                _1181[4u] = spvSDot_int_uint_uint(a0, _1088[464u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a1, _1088[465u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a2, _1088[466u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a3, _1088[467u], 0) + _1181[4u];
+                _1181[5u] = spvSDot_int_uint_uint(a0, _1088[468u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a1, _1088[469u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a2, _1088[470u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a3, _1088[471u], 0) + _1181[5u];
+                _1181[6u] = spvSDot_int_uint_uint(a0, _1088[472u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a1, _1088[473u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a2, _1088[474u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a3, _1088[475u], 0) + _1181[6u];
+                _1181[7u] = spvSDot_int_uint_uint(a0, _1088[476u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a1, _1088[477u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a2, _1088[478u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a3, _1088[479u], 0) + _1181[7u];
+                _1181[8u] = spvSDot_int_uint_uint(a0, _1088[480u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a1, _1088[481u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a2, _1088[482u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a3, _1088[483u], 0) + _1181[8u];
+                _1181[9u] = spvSDot_int_uint_uint(a0, _1088[484u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a1, _1088[485u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a2, _1088[486u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a3, _1088[487u], 0) + _1181[9u];
+                _1181[10u] = spvSDot_int_uint_uint(a0, _1088[488u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a1, _1088[489u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a2, _1088[490u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a3, _1088[491u], 0) + _1181[10u];
+                _1181[11u] = spvSDot_int_uint_uint(a0, _1088[492u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a1, _1088[493u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a2, _1088[494u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a3, _1088[495u], 0) + _1181[11u];
+                _1181[12u] = spvSDot_int_uint_uint(a0, _1088[496u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a1, _1088[497u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a2, _1088[498u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a3, _1088[499u], 0) + _1181[12u];
+                _1181[13u] = spvSDot_int_uint_uint(a0, _1088[500u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a1, _1088[501u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a2, _1088[502u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a3, _1088[503u], 0) + _1181[13u];
+                _1181[14u] = spvSDot_int_uint_uint(a0, _1088[504u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a1, _1088[505u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a2, _1088[506u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a3, _1088[507u], 0) + _1181[14u];
+                _1181[15u] = spvSDot_int_uint_uint(a0, _1088[508u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a1, _1088[509u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a2, _1088[510u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a3, _1088[511u], 0) + _1181[15u];
+            }
+        }
+        {
+            ivec2 tc = ivec2(_1226.xy) + ivec2(2, 2);
+            if (all(greaterThanEqual(tc, ivec2(0))) && all(lessThan(uvec2(tc), _1200)))
+            {
+                uint ba = (((16u * uint(tc.x + 1)) + (15392u * uint(tc.y + 1))) + 16684928u) >> 2u;
+                uint a0 = ScratchBuffer._m0[ba + 0u];
+                uint a1 = ScratchBuffer._m0[ba + 1u];
+                uint a2 = ScratchBuffer._m0[ba + 2u];
+                uint a3 = ScratchBuffer._m0[ba + 3u];
+                _1181[0u] = spvSDot_int_uint_uint(a0, _1088[512u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a1, _1088[513u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a2, _1088[514u], 0) + _1181[0u];
+                _1181[0u] = spvSDot_int_uint_uint(a3, _1088[515u], 0) + _1181[0u];
+                _1181[1u] = spvSDot_int_uint_uint(a0, _1088[516u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a1, _1088[517u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a2, _1088[518u], 0) + _1181[1u];
+                _1181[1u] = spvSDot_int_uint_uint(a3, _1088[519u], 0) + _1181[1u];
+                _1181[2u] = spvSDot_int_uint_uint(a0, _1088[520u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a1, _1088[521u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a2, _1088[522u], 0) + _1181[2u];
+                _1181[2u] = spvSDot_int_uint_uint(a3, _1088[523u], 0) + _1181[2u];
+                _1181[3u] = spvSDot_int_uint_uint(a0, _1088[524u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a1, _1088[525u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a2, _1088[526u], 0) + _1181[3u];
+                _1181[3u] = spvSDot_int_uint_uint(a3, _1088[527u], 0) + _1181[3u];
+                _1181[4u] = spvSDot_int_uint_uint(a0, _1088[528u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a1, _1088[529u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a2, _1088[530u], 0) + _1181[4u];
+                _1181[4u] = spvSDot_int_uint_uint(a3, _1088[531u], 0) + _1181[4u];
+                _1181[5u] = spvSDot_int_uint_uint(a0, _1088[532u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a1, _1088[533u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a2, _1088[534u], 0) + _1181[5u];
+                _1181[5u] = spvSDot_int_uint_uint(a3, _1088[535u], 0) + _1181[5u];
+                _1181[6u] = spvSDot_int_uint_uint(a0, _1088[536u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a1, _1088[537u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a2, _1088[538u], 0) + _1181[6u];
+                _1181[6u] = spvSDot_int_uint_uint(a3, _1088[539u], 0) + _1181[6u];
+                _1181[7u] = spvSDot_int_uint_uint(a0, _1088[540u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a1, _1088[541u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a2, _1088[542u], 0) + _1181[7u];
+                _1181[7u] = spvSDot_int_uint_uint(a3, _1088[543u], 0) + _1181[7u];
+                _1181[8u] = spvSDot_int_uint_uint(a0, _1088[544u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a1, _1088[545u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a2, _1088[546u], 0) + _1181[8u];
+                _1181[8u] = spvSDot_int_uint_uint(a3, _1088[547u], 0) + _1181[8u];
+                _1181[9u] = spvSDot_int_uint_uint(a0, _1088[548u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a1, _1088[549u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a2, _1088[550u], 0) + _1181[9u];
+                _1181[9u] = spvSDot_int_uint_uint(a3, _1088[551u], 0) + _1181[9u];
+                _1181[10u] = spvSDot_int_uint_uint(a0, _1088[552u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a1, _1088[553u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a2, _1088[554u], 0) + _1181[10u];
+                _1181[10u] = spvSDot_int_uint_uint(a3, _1088[555u], 0) + _1181[10u];
+                _1181[11u] = spvSDot_int_uint_uint(a0, _1088[556u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a1, _1088[557u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a2, _1088[558u], 0) + _1181[11u];
+                _1181[11u] = spvSDot_int_uint_uint(a3, _1088[559u], 0) + _1181[11u];
+                _1181[12u] = spvSDot_int_uint_uint(a0, _1088[560u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a1, _1088[561u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a2, _1088[562u], 0) + _1181[12u];
+                _1181[12u] = spvSDot_int_uint_uint(a3, _1088[563u], 0) + _1181[12u];
+                _1181[13u] = spvSDot_int_uint_uint(a0, _1088[564u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a1, _1088[565u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a2, _1088[566u], 0) + _1181[13u];
+                _1181[13u] = spvSDot_int_uint_uint(a3, _1088[567u], 0) + _1181[13u];
+                _1181[14u] = spvSDot_int_uint_uint(a0, _1088[568u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a1, _1088[569u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a2, _1088[570u], 0) + _1181[14u];
+                _1181[14u] = spvSDot_int_uint_uint(a3, _1088[571u], 0) + _1181[14u];
+                _1181[15u] = spvSDot_int_uint_uint(a0, _1088[572u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a1, _1088[573u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a2, _1088[574u], 0) + _1181[15u];
+                _1181[15u] = spvSDot_int_uint_uint(a3, _1088[575u], 0) + _1181[15u];
+            }
+        }
+        uint _1184[4];
+        {
+            {
+                {
+                ivec4 _1539 = ivec4(_1181[0u], _1181[0u + 1u], _1181[0u + 2u], _1181[0u + 3u]);
+                ivec4 _1544 = ((_1539 + ivec4(127)) + ((_1539 >> ivec4(8)) & ivec4(1))) >> ivec4(8);
+                _1184[0u / 4u] = (((uint(clamp(_1544.x, -128, 127)) & 255u) | ((uint(clamp(_1544.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_1544.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_1544.w, -128, 127)) & 255u) << 24u);
+                }
+            }
+            {
+                {
+                ivec4 _1539 = ivec4(_1181[4u], _1181[4u + 1u], _1181[4u + 2u], _1181[4u + 3u]);
+                ivec4 _1544 = ((_1539 + ivec4(127)) + ((_1539 >> ivec4(8)) & ivec4(1))) >> ivec4(8);
+                _1184[4u / 4u] = (((uint(clamp(_1544.x, -128, 127)) & 255u) | ((uint(clamp(_1544.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_1544.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_1544.w, -128, 127)) & 255u) << 24u);
+                }
+            }
+            {
+                {
+                ivec4 _1539 = ivec4(_1181[8u], _1181[8u + 1u], _1181[8u + 2u], _1181[8u + 3u]);
+                ivec4 _1544 = ((_1539 + ivec4(127)) + ((_1539 >> ivec4(8)) & ivec4(1))) >> ivec4(8);
+                _1184[8u / 4u] = (((uint(clamp(_1544.x, -128, 127)) & 255u) | ((uint(clamp(_1544.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_1544.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_1544.w, -128, 127)) & 255u) << 24u);
+                }
+            }
+            {
+                {
+                ivec4 _1539 = ivec4(_1181[12u], _1181[12u + 1u], _1181[12u + 2u], _1181[12u + 3u]);
+                ivec4 _1544 = ((_1539 + ivec4(127)) + ((_1539 >> ivec4(8)) & ivec4(1))) >> ivec4(8);
+                _1184[12u / 4u] = (((uint(clamp(_1544.x, -128, 127)) & 255u) | ((uint(clamp(_1544.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_1544.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_1544.w, -128, 127)) & 255u) << 24u);
+                }
+            }
+        }
+        ivec4 _1958 = max(ivec4(spvSDot_int_uint_uint(_1184[3], 538581545u, 0) + (spvSDot_int_uint_uint(_1184[2], 886701304u, 0) + (spvSDot_int_uint_uint(_1184[1], 3756852697u, 0) + (spvSDot_int_uint_uint(_1184[0], 3438542389u, 0) + 251))), spvSDot_int_uint_uint(_1184[3], 1009317871u, 0) + (spvSDot_int_uint_uint(_1184[2], 4293543162u, 0) + (spvSDot_int_uint_uint(_1184[1], 3876836836u, 0) + (spvSDot_int_uint_uint(_1184[0], 4240319931u, 0) + 1308))), spvSDot_int_uint_uint(_1184[3], 136377610u, 0) + (spvSDot_int_uint_uint(_1184[2], 3372417559u, 0) + (spvSDot_int_uint_uint(_1184[1], 704253743u, 0) + (spvSDot_int_uint_uint(_1184[0], 285150937u, 0) + 246))), spvSDot_int_uint_uint(_1184[3], 1108013606u, 0) + (spvSDot_int_uint_uint(_1184[2], 1310145009u, 0) + (spvSDot_int_uint_uint(_1184[1], 3893291829u, 0) + (spvSDot_int_uint_uint(_1184[0], 2091841814u, 0) + 78)))), ivec4(0));
+        ivec4 _1963 = ((_1958 + ivec4(127)) + ((_1958 >> ivec4(8)) & ivec4(1))) >> ivec4(8);
+        uint _1985 = (((uint(clamp(_1963.x, -128, 127)) & 255u) | ((uint(clamp(_1963.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_1963.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_1963.w, -128, 127)) & 255u) << 24u);
+        ivec4 _1987 = max(ivec4(spvSDot_int_uint_uint(_1184[3], 3327519418u, 0) + (spvSDot_int_uint_uint(_1184[2], 3602768106u, 0) + (spvSDot_int_uint_uint(_1184[1], 3812183253u, 0) + (spvSDot_int_uint_uint(_1184[0], 2149562307u, 0) + 70))), spvSDot_int_uint_uint(_1184[3], 356877948u, 0) + (spvSDot_int_uint_uint(_1184[2], 2864261013u, 0) + (spvSDot_int_uint_uint(_1184[1], 1674569422u, 0) + (spvSDot_int_uint_uint(_1184[0], 4096202630u, 0) + (-1971)))), spvSDot_int_uint_uint(_1184[3], 73845415u, 0) + (spvSDot_int_uint_uint(_1184[2], 62440667u, 0) + (spvSDot_int_uint_uint(_1184[1], 3007970086u, 0) + (spvSDot_int_uint_uint(_1184[0], 3454570477u, 0) + 826))), spvSDot_int_uint_uint(_1184[3], 2517043482u, 0) + (spvSDot_int_uint_uint(_1184[2], 3604537904u, 0) + (spvSDot_int_uint_uint(_1184[1], 3538321468u, 0) + (spvSDot_int_uint_uint(_1184[0], 2774909236u, 0) + 82)))), ivec4(0));
+        ivec4 _1992 = ((_1987 + ivec4(127)) + ((_1987 >> ivec4(8)) & ivec4(1))) >> ivec4(8);
+        uint _2014 = (((uint(clamp(_1992.x, -128, 127)) & 255u) | ((uint(clamp(_1992.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_1992.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_1992.w, -128, 127)) & 255u) << 24u);
+        ivec4 _2016 = max(ivec4(spvSDot_int_uint_uint(_1184[3], 486474256u, 0) + (spvSDot_int_uint_uint(_1184[2], 3924376269u, 0) + (spvSDot_int_uint_uint(_1184[1], 3961138659u, 0) + (spvSDot_int_uint_uint(_1184[0], 608110419u, 0) + 358))), spvSDot_int_uint_uint(_1184[3], 4093556469u, 0) + (spvSDot_int_uint_uint(_1184[2], 3170375641u, 0) + (spvSDot_int_uint_uint(_1184[1], 4005426966u, 0) + (spvSDot_int_uint_uint(_1184[0], 871500501u, 0) + 100))), spvSDot_int_uint_uint(_1184[3], 2132015779u, 0) + (spvSDot_int_uint_uint(_1184[2], 3570788325u, 0) + (spvSDot_int_uint_uint(_1184[1], 890535917u, 0) + (spvSDot_int_uint_uint(_1184[0], 3322271051u, 0) + 117))), spvSDot_int_uint_uint(_1184[3], 2047931883u, 0) + (spvSDot_int_uint_uint(_1184[2], 3738163441u, 0) + (spvSDot_int_uint_uint(_1184[1], 3725875957u, 0) + (spvSDot_int_uint_uint(_1184[0], 3708091970u, 0) + 67)))), ivec4(0));
+        ivec4 _2021 = ((_2016 + ivec4(127)) + ((_2016 >> ivec4(8)) & ivec4(1))) >> ivec4(8);
+        uint _2043 = (((uint(clamp(_2021.x, -128, 127)) & 255u) | ((uint(clamp(_2021.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_2021.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_2021.w, -128, 127)) & 255u) << 24u);
+        ivec4 _2045 = max(ivec4(spvSDot_int_uint_uint(_1184[3], 3979214620u, 0) + (spvSDot_int_uint_uint(_1184[2], 15408163u, 0) + (spvSDot_int_uint_uint(_1184[1], 454758178u, 0) + (spvSDot_int_uint_uint(_1184[0], 285274184u, 0) + (-259)))), spvSDot_int_uint_uint(_1184[3], 2870790911u, 0) + (spvSDot_int_uint_uint(_1184[2], 874964793u, 0) + (spvSDot_int_uint_uint(_1184[1], 149154249u, 0) + (spvSDot_int_uint_uint(_1184[0], 64300529u, 0) + (-7)))), spvSDot_int_uint_uint(_1184[3], 318440958u, 0) + (spvSDot_int_uint_uint(_1184[2], 1076181761u, 0) + (spvSDot_int_uint_uint(_1184[1], 1055851050u, 0) + (spvSDot_int_uint_uint(_1184[0], 984289827u, 0) + 28))), spvSDot_int_uint_uint(_1184[3], 3004152594u, 0) + (spvSDot_int_uint_uint(_1184[2], 656264728u, 0) + (spvSDot_int_uint_uint(_1184[1], 3506292935u, 0) + (spvSDot_int_uint_uint(_1184[0], 1122127651u, 0) + 441)))), ivec4(0));
+        ivec4 _2050 = ((_2045 + ivec4(127)) + ((_2045 >> ivec4(8)) & ivec4(1))) >> ivec4(8);
+        uint _2072 = (((uint(clamp(_2050.x, -128, 127)) & 255u) | ((uint(clamp(_2050.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_2050.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_2050.w, -128, 127)) & 255u) << 24u);
+        ivec4 _2074 = max(ivec4(spvSDot_int_uint_uint(_1184[3], 1812663979u, 0) + (spvSDot_int_uint_uint(_1184[2], 3874999049u, 0) + (spvSDot_int_uint_uint(_1184[1], 788291821u, 0) + (spvSDot_int_uint_uint(_1184[0], 3035216099u, 0) + 151))), spvSDot_int_uint_uint(_1184[3], 3190225184u, 0) + (spvSDot_int_uint_uint(_1184[2], 3771201828u, 0) + (spvSDot_int_uint_uint(_1184[1], 2262599022u, 0) + (spvSDot_int_uint_uint(_1184[0], 3174222194u, 0) + 197))), spvSDot_int_uint_uint(_1184[3], 3069444894u, 0) + (spvSDot_int_uint_uint(_1184[2], 3824418332u, 0) + (spvSDot_int_uint_uint(_1184[1], 956812473u, 0) + (spvSDot_int_uint_uint(_1184[0], 4250192363u, 0) + 200))), spvSDot_int_uint_uint(_1184[3], 3821531579u, 0) + (spvSDot_int_uint_uint(_1184[2], 4241593509u, 0) + (spvSDot_int_uint_uint(_1184[1], 3957114625u, 0) + (spvSDot_int_uint_uint(_1184[0], 1338832037u, 0) + 1211)))), ivec4(0));
+        ivec4 _2079 = ((_2074 + ivec4(127)) + ((_2074 >> ivec4(8)) & ivec4(1))) >> ivec4(8);
+        uint _2101 = (((uint(clamp(_2079.x, -128, 127)) & 255u) | ((uint(clamp(_2079.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_2079.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_2079.w, -128, 127)) & 255u) << 24u);
+        ivec4 _2103 = max(ivec4(spvSDot_int_uint_uint(_1184[3], 4243384514u, 0) + (spvSDot_int_uint_uint(_1184[2], 738264573u, 0) + (spvSDot_int_uint_uint(_1184[1], 686095582u, 0) + (spvSDot_int_uint_uint(_1184[0], 3542357510u, 0) + 888))), spvSDot_int_uint_uint(_1184[3], 1521827110u, 0) + (spvSDot_int_uint_uint(_1184[2], 3808320277u, 0) + (spvSDot_int_uint_uint(_1184[1], 4034976322u, 0) + (spvSDot_int_uint_uint(_1184[0], 2537147406u, 0) + (-27)))), spvSDot_int_uint_uint(_1184[3], 151068683u, 0) + (spvSDot_int_uint_uint(_1184[2], 659029545u, 0) + (spvSDot_int_uint_uint(_1184[1], 4095878113u, 0) + (spvSDot_int_uint_uint(_1184[0], 3911914470u, 0) + 40))), spvSDot_int_uint_uint(_1184[3], 3974163211u, 0) + (spvSDot_int_uint_uint(_1184[2], 3922922262u, 0) + (spvSDot_int_uint_uint(_1184[1], 4144572169u, 0) + (spvSDot_int_uint_uint(_1184[0], 218691823u, 0) + 219)))), ivec4(0));
+        ivec4 _2108 = ((_2103 + ivec4(127)) + ((_2103 >> ivec4(8)) & ivec4(1))) >> ivec4(8);
+        uint _2130 = (((uint(clamp(_2108.x, -128, 127)) & 255u) | ((uint(clamp(_2108.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_2108.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_2108.w, -128, 127)) & 255u) << 24u);
+        ivec4 _2132 = max(ivec4(spvSDot_int_uint_uint(_1184[3], 1972255763u, 0) + (spvSDot_int_uint_uint(_1184[2], 3636557050u, 0) + (spvSDot_int_uint_uint(_1184[1], 159624539u, 0) + (spvSDot_int_uint_uint(_1184[0], 3712801629u, 0) + (-3)))), spvSDot_int_uint_uint(_1184[3], 2953201095u, 0) + (spvSDot_int_uint_uint(_1184[2], 3539870207u, 0) + (spvSDot_int_uint_uint(_1184[1], 133958635u, 0) + (spvSDot_int_uint_uint(_1184[0], 115672546u, 0) + 520))), spvSDot_int_uint_uint(_1184[3], 1285621727u, 0) + (spvSDot_int_uint_uint(_1184[2], 146146778u, 0) + (spvSDot_int_uint_uint(_1184[1], 200650058u, 0) + (spvSDot_int_uint_uint(_1184[0], 1009856092u, 0) + (-160)))), spvSDot_int_uint_uint(_1184[3], 3423985649u, 0) + (spvSDot_int_uint_uint(_1184[2], 4075818496u, 0) + (spvSDot_int_uint_uint(_1184[1], 420085291u, 0) + (spvSDot_int_uint_uint(_1184[0], 3940549405u, 0) + (-23))))), ivec4(0));
+        ivec4 _2137 = ((_2132 + ivec4(127)) + ((_2132 >> ivec4(8)) & ivec4(1))) >> ivec4(8);
+        uint _2159 = (((uint(clamp(_2137.x, -128, 127)) & 255u) | ((uint(clamp(_2137.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_2137.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_2137.w, -128, 127)) & 255u) << 24u);
+        ivec4 _2161 = max(ivec4(spvSDot_int_uint_uint(_1184[3], 505161986u, 0) + (spvSDot_int_uint_uint(_1184[2], 571663604u, 0) + (spvSDot_int_uint_uint(_1184[1], 486788591u, 0) + (spvSDot_int_uint_uint(_1184[0], 217251101u, 0) + (-251)))), spvSDot_int_uint_uint(_1184[3], 453120512u, 0) + (spvSDot_int_uint_uint(_1184[2], 4092069641u, 0) + (spvSDot_int_uint_uint(_1184[1], 200073971u, 0) + (spvSDot_int_uint_uint(_1184[0], 1307838507u, 0) + 66))), spvSDot_int_uint_uint(_1184[3], 4210816534u, 0) + (spvSDot_int_uint_uint(_1184[2], 3527476209u, 0) + (spvSDot_int_uint_uint(_1184[1], 588776169u, 0) + (spvSDot_int_uint_uint(_1184[0], 4007721775u, 0) + 742))), spvSDot_int_uint_uint(_1184[3], 4278130938u, 0) + (spvSDot_int_uint_uint(_1184[2], 351344396u, 0) + (spvSDot_int_uint_uint(_1184[1], 1438904u, 0) + (spvSDot_int_uint_uint(_1184[0], 4245353253u, 0) + 436)))), ivec4(0));
+        ivec4 _2166 = ((_2161 + ivec4(127)) + ((_2161 >> ivec4(8)) & ivec4(1))) >> ivec4(8);
+        uint _2188 = (((uint(clamp(_2166.x, -128, 127)) & 255u) | ((uint(clamp(_2166.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_2166.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_2166.w, -128, 127)) & 255u) << 24u);
+        uvec4 _2446 = uvec4(_1225) + uvec4(1u, 1u, 0u, 0u);
+        uint _2458 = (((((16u * _2446.x) + (15392u * _2446.y)) + _2446.z) + (8342464u * _2446.w)) + 16684928u) >> 2u;
+        uint _2461 = _2458 + 1u;
+        uint _2464 = _2458 + 2u;
+        uint _2467 = _2458 + 3u;
+        vec4 _2485 = vec4(ivec4(spvSDot_int_uint_uint(_2188, 33759016u, 0) + (spvSDot_int_uint_uint(_2159, 3856594695u, 0) + (spvSDot_int_uint_uint(_2130, 3674149410u, 0) + (spvSDot_int_uint_uint(_2101, 3909254076u, 0) + (spvSDot_int_uint_uint(_2072, 264827635u, 0) + (spvSDot_int_uint_uint(_2043, 3346006199u, 0) + (spvSDot_int_uint_uint(_2014, 2161968151u, 0) + (spvSDot_int_uint_uint(_1985, 1579357662u, 0) + (-11)))))))), spvSDot_int_uint_uint(_2188, 419502127u, 0) + (spvSDot_int_uint_uint(_2159, 3707693534u, 0) + (spvSDot_int_uint_uint(_2130, 47590376u, 0) + (spvSDot_int_uint_uint(_2101, 2515331379u, 0) + (spvSDot_int_uint_uint(_2072, 22214920u, 0) + (spvSDot_int_uint_uint(_2043, 1786826809u, 0) + (spvSDot_int_uint_uint(_2014, 282753610u, 0) + (spvSDot_int_uint_uint(_1985, 3289909211u, 0) + 36))))))), spvSDot_int_uint_uint(_2188, 3175093755u, 0) + (spvSDot_int_uint_uint(_2159, 458469595u, 0) + (spvSDot_int_uint_uint(_2130, 320666086u, 0) + (spvSDot_int_uint_uint(_2101, 237731096u, 0) + (spvSDot_int_uint_uint(_2072, 3258469053u, 0) + (spvSDot_int_uint_uint(_2043, 2469869568u, 0) + (spvSDot_int_uint_uint(_2014, 3249272143u, 0) + (spvSDot_int_uint_uint(_1985, 2246591768u, 0) + 210))))))), spvSDot_int_uint_uint(_2188, 252633830u, 0) + (spvSDot_int_uint_uint(_2159, 485893440u, 0) + (spvSDot_int_uint_uint(_2130, 234474277u, 0) + (spvSDot_int_uint_uint(_2101, 491251218u, 0) + (spvSDot_int_uint_uint(_2072, 3692245455u, 0) + (spvSDot_int_uint_uint(_2043, 1120468241u, 0) + (spvSDot_int_uint_uint(_2014, 3950100865u, 0) + (spvSDot_int_uint_uint(_1985, 4190837023u, 0) + 202)))))))));
+        ivec4 _2490 = ivec4(roundEven(((vec4(ivec4(int(ScratchBuffer._m0[_2458] << 24u) >> 24, int(ScratchBuffer._m0[_2458] << 16u) >> 24, int(ScratchBuffer._m0[_2458] << 8u) >> 24, int(ScratchBuffer._m0[_2458]) >> 24)) * 0.03125) + (_2485 * 0.0009765625)) * 16.0));
+        uint _2512 = (((uint(clamp(_2490.x, -128, 127)) & 255u) | ((uint(clamp(_2490.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_2490.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_2490.w, -128, 127)) & 255u) << 24u);
+        vec4 _2528 = vec4(ivec4(spvSDot_int_uint_uint(_2188, 688918234u, 0) + (spvSDot_int_uint_uint(_2159, 3977966286u, 0) + (spvSDot_int_uint_uint(_2130, 340277744u, 0) + (spvSDot_int_uint_uint(_2101, 471100934u, 0) + (spvSDot_int_uint_uint(_2072, 4044624334u, 0) + (spvSDot_int_uint_uint(_2043, 300993789u, 0) + (spvSDot_int_uint_uint(_2014, 2786520040u, 0) + (spvSDot_int_uint_uint(_1985, 3688830933u, 0) + (-13)))))))), spvSDot_int_uint_uint(_2188, 468169481u, 0) + (spvSDot_int_uint_uint(_2159, 701553169u, 0) + (spvSDot_int_uint_uint(_2130, 689116222u, 0) + (spvSDot_int_uint_uint(_2101, 289816205u, 0) + (spvSDot_int_uint_uint(_2072, 347010801u, 0) + (spvSDot_int_uint_uint(_2043, 3531427030u, 0) + (spvSDot_int_uint_uint(_2014, 2950814750u, 0) + (spvSDot_int_uint_uint(_1985, 1275920594u, 0) + (-2)))))))), spvSDot_int_uint_uint(_2188, 114426414u, 0) + (spvSDot_int_uint_uint(_2159, 14494244u, 0) + (spvSDot_int_uint_uint(_2130, 4195938564u, 0) + (spvSDot_int_uint_uint(_2101, 4229719703u, 0) + (spvSDot_int_uint_uint(_2072, 451205366u, 0) + (spvSDot_int_uint_uint(_2043, 1261377784u, 0) + (spvSDot_int_uint_uint(_2014, 2398087965u, 0) + (spvSDot_int_uint_uint(_1985, 4146264524u, 0) + (-65)))))))), spvSDot_int_uint_uint(_2188, 1139480554u, 0) + (spvSDot_int_uint_uint(_2159, 3960535774u, 0) + (spvSDot_int_uint_uint(_2130, 202251531u, 0) + (spvSDot_int_uint_uint(_2101, 3911024606u, 0) + (spvSDot_int_uint_uint(_2072, 3855885293u, 0) + (spvSDot_int_uint_uint(_2043, 3995597045u, 0) + (spvSDot_int_uint_uint(_2014, 2162360854u, 0) + (spvSDot_int_uint_uint(_1985, 905111019u, 0) + (-164))))))))));
+        ivec4 _2533 = ivec4(roundEven(((vec4(ivec4(int(ScratchBuffer._m0[_2461] << 24u) >> 24, int(ScratchBuffer._m0[_2461] << 16u) >> 24, int(ScratchBuffer._m0[_2461] << 8u) >> 24, int(ScratchBuffer._m0[_2461]) >> 24)) * 0.03125) + (_2528 * 0.0009765625)) * 16.0));
+        uint _2555 = (((uint(clamp(_2533.x, -128, 127)) & 255u) | ((uint(clamp(_2533.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_2533.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_2533.w, -128, 127)) & 255u) << 24u);
+        vec4 _2571 = vec4(ivec4(spvSDot_int_uint_uint(_2188, 722388991u, 0) + (spvSDot_int_uint_uint(_2159, 566817828u, 0) + (spvSDot_int_uint_uint(_2130, 484967449u, 0) + (spvSDot_int_uint_uint(_2101, 4263912115u, 0) + (spvSDot_int_uint_uint(_2072, 653323491u, 0) + (spvSDot_int_uint_uint(_2043, 942156972u, 0) + (spvSDot_int_uint_uint(_2014, 3271228176u, 0) + (spvSDot_int_uint_uint(_1985, 451088891u, 0) + (-198)))))))), spvSDot_int_uint_uint(_2188, 942868772u, 0) + (spvSDot_int_uint_uint(_2159, 183244547u, 0) + (spvSDot_int_uint_uint(_2130, 163320521u, 0) + (spvSDot_int_uint_uint(_2101, 3905610457u, 0) + (spvSDot_int_uint_uint(_2072, 405133595u, 0) + (spvSDot_int_uint_uint(_2043, 772599039u, 0) + (spvSDot_int_uint_uint(_2014, 286662637u, 0) + (spvSDot_int_uint_uint(_1985, 136635094u, 0) + 213))))))), spvSDot_int_uint_uint(_2188, 3320977433u, 0) + (spvSDot_int_uint_uint(_2159, 754724434u, 0) + (spvSDot_int_uint_uint(_2130, 3558317285u, 0) + (spvSDot_int_uint_uint(_2101, 4213080174u, 0) + (spvSDot_int_uint_uint(_2072, 417721860u, 0) + (spvSDot_int_uint_uint(_2043, 4205049592u, 0) + (spvSDot_int_uint_uint(_2014, 1765340601u, 0) + (spvSDot_int_uint_uint(_1985, 201325858u, 0) + (-155)))))))), spvSDot_int_uint_uint(_2188, 3323861756u, 0) + (spvSDot_int_uint_uint(_2159, 3443324546u, 0) + (spvSDot_int_uint_uint(_2130, 69959678u, 0) + (spvSDot_int_uint_uint(_2101, 1697924319u, 0) + (spvSDot_int_uint_uint(_2072, 267446202u, 0) + (spvSDot_int_uint_uint(_2043, 3008033065u, 0) + (spvSDot_int_uint_uint(_2014, 3740578812u, 0) + (spvSDot_int_uint_uint(_1985, 3657169137u, 0) + (-65))))))))));
+        ivec4 _2576 = ivec4(roundEven(((vec4(ivec4(int(ScratchBuffer._m0[_2464] << 24u) >> 24, int(ScratchBuffer._m0[_2464] << 16u) >> 24, int(ScratchBuffer._m0[_2464] << 8u) >> 24, int(ScratchBuffer._m0[_2464]) >> 24)) * 0.03125) + (_2571 * 0.0009765625)) * 16.0));
+        uint _2598 = (((uint(clamp(_2576.x, -128, 127)) & 255u) | ((uint(clamp(_2576.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_2576.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_2576.w, -128, 127)) & 255u) << 24u);
+        vec4 _2614 = vec4(ivec4(spvSDot_int_uint_uint(_2188, 891042054u, 0) + (spvSDot_int_uint_uint(_2159, 3793952195u, 0) + (spvSDot_int_uint_uint(_2130, 3790615266u, 0) + (spvSDot_int_uint_uint(_2101, 534202609u, 0) + (spvSDot_int_uint_uint(_2072, 266525942u, 0) + (spvSDot_int_uint_uint(_2043, 2372199145u, 0) + (spvSDot_int_uint_uint(_2014, 3571708164u, 0) + (spvSDot_int_uint_uint(_1985, 737414098u, 0) + (-78)))))))), spvSDot_int_uint_uint(_2188, 434118171u, 0) + (spvSDot_int_uint_uint(_2159, 4230080411u, 0) + (spvSDot_int_uint_uint(_2130, 99047883u, 0) + (spvSDot_int_uint_uint(_2101, 866971581u, 0) + (spvSDot_int_uint_uint(_2072, 2974961961u, 0) + (spvSDot_int_uint_uint(_2043, 706551044u, 0) + (spvSDot_int_uint_uint(_2014, 1105786640u, 0) + (spvSDot_int_uint_uint(_1985, 3155953644u, 0) + (-116)))))))), spvSDot_int_uint_uint(_2188, 4079009050u, 0) + (spvSDot_int_uint_uint(_2159, 4020497012u, 0) + (spvSDot_int_uint_uint(_2130, 34248449u, 0) + (spvSDot_int_uint_uint(_2101, 2599574776u, 0) + (spvSDot_int_uint_uint(_2072, 4030011650u, 0) + (spvSDot_int_uint_uint(_2043, 719319863u, 0) + (spvSDot_int_uint_uint(_2014, 2500355613u, 0) + (spvSDot_int_uint_uint(_1985, 4094943713u, 0) + (-188)))))))), spvSDot_int_uint_uint(_2188, 3087520245u, 0) + (spvSDot_int_uint_uint(_2159, 3789498919u, 0) + (spvSDot_int_uint_uint(_2130, 4064012798u, 0) + (spvSDot_int_uint_uint(_2101, 1144867234u, 0) + (spvSDot_int_uint_uint(_2072, 269553139u, 0) + (spvSDot_int_uint_uint(_2043, 89005512u, 0) + (spvSDot_int_uint_uint(_2014, 2923604417u, 0) + (spvSDot_int_uint_uint(_1985, 3908307714u, 0) + 131)))))))));
+        ivec4 _2619 = ivec4(roundEven(((vec4(ivec4(int(ScratchBuffer._m0[_2467] << 24u) >> 24, int(ScratchBuffer._m0[_2467] << 16u) >> 24, int(ScratchBuffer._m0[_2467] << 8u) >> 24, int(ScratchBuffer._m0[_2467]) >> 24)) * 0.03125) + (_2614 * 0.0009765625)) * 16.0));
+        uint _2641 = (((uint(clamp(_2619.x, -128, 127)) & 255u) | ((uint(clamp(_2619.y, -128, 127)) & 255u) << 8u)) | ((uint(clamp(_2619.z, -128, 127)) & 255u) << 16u)) | ((uint(clamp(_2619.w, -128, 127)) & 255u) << 24u);
+        uint _wb = ((_1216.y * 960u) + _1216.x) * 4u;
+        ScratchBuffer._m0[_wb] = _2512;
+        ScratchBuffer._m0[_wb + 1u] = _2555;
+        ScratchBuffer._m0[_wb + 2u] = _2598;
+        ScratchBuffer._m0[_wb + 3u] = _2641;
+        break;
+    } while(false);
+}

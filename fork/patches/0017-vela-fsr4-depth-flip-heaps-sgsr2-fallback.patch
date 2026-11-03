@@ -1,0 +1,357 @@
+diff --git a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+index f5829d01..b3433d83 100644
+--- a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
++++ b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+@@ -1041,10 +1041,30 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
+         const int lossy = m == VelaLive::Model::Fsr4Lite ? lv.lossy : 1;
+         // Vela 0.8.3: the NPU also for the full FSR 4.1.1 model (graph nf4_exact)
+         const int npu = m == VelaLive::Model::Fsr4Lite || m == VelaLive::Model::Fsr4 ? lv.npu : 0;
+-        const Upscaler want = m == VelaLive::Model::Sgsr2   ? Upscaler::SGSR2
+-                              : m == VelaLive::Model::Fsr3  ? Upscaler::FFX
+-                              : m == VelaLive::Model::Unset ? cfg.Dx12Upscaler.value_or_default()
+-                                                            : Upscaler::SGSR3;
++        // Vela 0.8.13: fsr4 / fsr4lite run on the SGSR 3 feature (its FSR 4 VK bridge); when that cannot run here the
++        // handles go to SGSR 2 (one line); Vela AI / Vela SR are no longer offered, an ini asking for SGSR 3 alone
++        // (no live file) gets SGSR 2 too
++        static VelaLive::Model lastModel = VelaLive::Model::Unset;
++        static bool fsr4DownLogged = false;
++        if (m != lastModel)
++        {
++            VelaLive::Fsr4Failed() = false;
++            fsr4DownLogged = false;
++            lastModel = m;
++        }
++        const bool isFsr4 = m == VelaLive::Model::Fsr4 || m == VelaLive::Model::Fsr4Lite;
++        const bool fsr4Down = isFsr4 && VelaLive::Fsr4Failed();
++        if (fsr4Down && !fsr4DownLogged)
++        {
++            fsr4DownLogged = true;
++            LOG_WARN("Vela live: {0} cannot run in this game; SGSR 2 instead", VelaLive::ModelName(m));
++        }
++        const Upscaler iniUp = cfg.Dx12Upscaler.value_or_default();
++        const Upscaler want = m == VelaLive::Model::Sgsr2 || fsr4Down ? Upscaler::SGSR2
++                              : m == VelaLive::Model::Fsr3            ? Upscaler::FFX
++                              : isFsr4                                ? Upscaler::SGSR3
++                              : iniUp == Upscaler::SGSR3              ? Upscaler::SGSR2
++                                                                      : iniUp;
+         const bool seen = velaHandles.contains(handleId);
+         auto& h = velaHandles[handleId];
+         bool change = false;
+@@ -1053,7 +1073,7 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
+             h.tries = 0;
+             change = true;  // the panel changed the model: Vela AI <-> P2b <-> SR need a re-create on the same backend
+         }
+-        else if (feature->GetUpscalerType() != want && h.tries < 2 &&
++        else if (feature->GetUpscalerType() != want && h.tries < (fsr4Down ? 3 : 2) &&
+                  (m != VelaLive::Model::Unset || seen))
+             change = true;  // a new handle, or a backend change that did not take yet
+         h.model = m;
+diff --git a/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h b/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
+index ed44ec4b..11e761f2 100644
+--- a/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
++++ b/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
+@@ -9,10 +9,12 @@
+ #include <Config.h>
+ #include <proxies/Ntdll_Proxy.h>
+ #include <Util.h>
++#include <shaders/depth_invert/DI_Dx12.h>
+ 
+ #include <cstdint>
+ #include <cstring>
+ #include <filesystem>
++#include <memory>
+ #include <string>
+ #include <vector>
+ 
+@@ -158,13 +160,29 @@ class Fsr4VkBridge
+         _rh = rh;
+         _dw = dw;
+         _dh = dh;
+-        if (!depthInverted || !lowResMv || jitteredMv)
++        // Vela 0.8.13: the provider takes only inverted depth (ffx_vk_provider.cpp: the create flags must be exactly
++        // DEPTH_INVERTED); a game with standard depth (Control) gets a 1 - d copy (OptiScaler's own DI_Dx12, R32F) and
++        // everything downstream treats it as inverted: 1 - d of a standard projection is the reverse-Z projection with
++        // the same near / far. Jittered or display-size motion vectors are still refused (SGSR 2 then)
++        _flipDepth = !depthInverted;
++        if (!lowResMv || jitteredMv)
+         {
+-            LOG_WARN("Vela FSR 4 VK: the provider needs inverted depth and render-size, non-jittered motion vectors "
++            LOG_WARN("Vela FSR 4 VK: the provider needs render-size, non-jittered motion vectors "
+                      "(depthInverted {}, lowResMV {}, jitteredMV {})",
+                      depthInverted, lowResMv, jitteredMv);
+             return false;
+         }
++        if (_flipDepth)
++        {
++            _di = std::make_unique<DI_Dx12>("VelaFsr4DepthFlip", device);
++            if (!_di->IsInit())
++            {
++                LOG_ERROR("Vela FSR 4 VK: the depth flip (1 - d) shader did not start");
++                _di.reset();
++                return false;
++            }
++            LOG_INFO("Vela FSR 4 VK: the game's depth is not inverted: the provider gets a 1 - d copy (R32F)");
++        }
+         if (FAILED(device->QueryInterface(__uuidof(ID3D12DXVKInteropDevice1), (void**) &_interop)) || !_interop)
+         {
+             LOG_ERROR("Vela FSR 4 VK: no vkd3d-proton interop");
+@@ -281,6 +299,7 @@ class Fsr4VkBridge
+     }
+ 
+     bool Ready() const { return _ready; }
++    bool FlipsDepth() const { return _flipDepth; }
+     bool SizesMatch(uint32_t rw, uint32_t rh, uint32_t dw, uint32_t dh) const
+     {
+         return rw == _rw && rh == _rh && dw == _dw && dh == _dh;
+@@ -291,8 +310,15 @@ class Fsr4VkBridge
+     {
+         if (!_ready || !color.res || !depth.res || !mv.res || !output.res)
+             return false;
++        Tex dep = depth;
++        if (_flipDepth)
++        {
++            if (!FlipDepth(cl, depth))
++                return false;
++            dep = { _flip, _flipState };
++        }
+         Img in[3], out;
+-        if (!Get(color, in[0], false) || !Get(depth, in[1], true) || !Get(mv, in[2], false) || !Get(output, out, false))
++        if (!Get(color, in[0], false) || !Get(dep, in[1], true) || !Get(mv, in[2], false) || !Get(output, out, false))
+             return false;
+         Fsr4Vk::DispatchUpscale d {};
+         d.header.type = Fsr4Vk::kDispatchUpscale;
+@@ -331,6 +357,7 @@ class Fsr4VkBridge
+         const auto r = _dispatch(&_ctx, &d.header);
+         Transition(cb, in, 3, out, false);
+         _interop->EndVkCommandBufferInterop(cl);
++        HandHeapsBack(cl);
+         if (r != 0)
+         {
+             if (_failLogged++ < 3)
+@@ -358,6 +385,20 @@ class Fsr4VkBridge
+                 b->Release();
+                 b = nullptr;
+             }
++        for (auto*& h : _dummyHeap)
++            if (h)
++            {
++                h->Release();
++                h = nullptr;
++            }
++        if (_flip)
++        {
++            _flip->Release();
++            _flip = nullptr;
++        }
++        _di.reset();
++        _flipDepth = false;
++        _heapLogged = false;
+         if (_interop)
+         {
+             _interop->Release();
+@@ -513,6 +554,116 @@ class Fsr4VkBridge
+                 LOG_ERROR("Vela FSR 4 VK: flush buffers failed");
+                 return false;
+             }
++        // one-descriptor shader-visible heaps for HandHeapsBack
++        const D3D12_DESCRIPTOR_HEAP_TYPE types[2] = { D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
++                                                      D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER };
++        for (int i = 0; i < 2; i++)
++        {
++            D3D12_DESCRIPTOR_HEAP_DESC hd {};
++            hd.Type = types[i];
++            hd.NumDescriptors = 1;
++            hd.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
++            if (FAILED(device->CreateDescriptorHeap(&hd, IID_PPV_ARGS(&_dummyHeap[i]))))
++            {
++                LOG_ERROR("Vela FSR 4 VK: descriptor heaps failed");
++                return false;
++            }
++        }
++        return true;
++    }
++
++    // Vela 0.8.13 (the RE4 hang of, here in the fork): the provider binds its own descriptor buffers inside
++    // the interop, vkd3d-proton's EndVkCommandBufferInterop does nothing, and vkd3d-proton binds heaps again only when a
++    // SetDescriptorHeaps names another heap than the one it last bound -- a game that re-sets its own (same) heaps after
++    // the upscaler kept drawing with the provider's descriptors. Two dummy heaps set here make the game's next
++    // SetDescriptorHeaps a change, so vkd3d-proton binds the game's heaps again (the NGX contract: the game restores its
++    // state after Evaluate). VELA_FSR4_NOREBIND=1: the 0.8.12 behaviour (negative control)
++    void HandHeapsBack(ID3D12GraphicsCommandList* cl)
++    {
++        static const bool off = []
++        {
++            const char* e = std::getenv("VELA_FSR4_NOREBIND");
++            return e != nullptr && *e == '1';
++        }();
++        if (off || !_dummyHeap[0] || !_dummyHeap[1])
++        {
++            if (!_heapLogged)
++                LOG_WARN("Vela FSR 4 VK: descriptor heaps NOT handed back after the provider (VELA_FSR4_NOREBIND)");
++            _heapLogged = true;
++            return;
++        }
++        ID3D12DescriptorHeap* h[2] = { _dummyHeap[0], _dummyHeap[1] };
++        cl->SetDescriptorHeaps(2, h);
++        if (!_heapLogged)
++            LOG_INFO("Vela FSR 4 VK: descriptor heaps handed back to vkd3d-proton after the provider (the game's next "
++                     "SetDescriptorHeaps binds its heaps again)");
++        _heapLogged = true;
++    }
++
++    // 1 - d of the game's depth into an R32F texture of the depth's size, left in NON_PIXEL_SHADER_RESOURCE
++    bool FlipDepth(ID3D12GraphicsCommandList* cl, const Tex& depth)
++    {
++        const auto dd = depth.res->GetDesc();
++        if (_flip)
++        {
++            const auto fd = _flip->GetDesc();
++            if (fd.Width != dd.Width || fd.Height != dd.Height)
++            {
++                _flip->Release();
++                _flip = nullptr;
++            }
++        }
++        if (!_flip)
++        {
++            ID3D12Device* dev = nullptr;
++            if (FAILED(depth.res->GetDevice(IID_PPV_ARGS(&dev))) || !dev)
++                return false;
++            D3D12_HEAP_PROPERTIES hp { D3D12_HEAP_TYPE_DEFAULT };
++            D3D12_RESOURCE_DESC rd {};
++            rd.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
++            rd.Width = dd.Width;
++            rd.Height = dd.Height;
++            rd.DepthOrArraySize = 1;
++            rd.MipLevels = 1;
++            rd.Format = DXGI_FORMAT_R32_FLOAT;
++            rd.SampleDesc.Count = 1;
++            rd.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
++            const HRESULT hr = dev->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &rd,
++                                                            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
++                                                            IID_PPV_ARGS(&_flip));
++            dev->Release();
++            if (FAILED(hr) || !_flip)
++            {
++                LOG_ERROR("Vela FSR 4 VK: depth flip texture {}x{} failed", (uint64_t) dd.Width, dd.Height);
++                _flip = nullptr;
++                return false;
++            }
++            _flip->SetName(L"VelaFsr4DepthFlip");
++            _flipState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
++            LOG_INFO("Vela FSR 4 VK: depth flip {}x{} (game depth DXGI format {})", (uint64_t) dd.Width, dd.Height,
++                     (int) dd.Format);
++        }
++        auto barrier = [&](D3D12_RESOURCE_STATES to)
++        {
++            if (_flipState == to)
++                return;
++            D3D12_RESOURCE_BARRIER b {};
++            b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
++            b.Transition.pResource = _flip;
++            b.Transition.StateBefore = _flipState;
++            b.Transition.StateAfter = to;
++            b.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
++            cl->ResourceBarrier(1, &b);
++            _flipState = to;
++        };
++        barrier(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
++        if (!_di->Dispatch(cl, depth.res, _flip))
++        {
++            if (_failLogged++ < 3)
++                LOG_ERROR("Vela FSR 4 VK: depth flip dispatch failed");
++            return false;
++        }
++        barrier(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+         return true;
+     }
+ 
+@@ -533,4 +684,10 @@ class Fsr4VkBridge
+     bool _lite = false;
+     uint32_t _every = 1;
+     uint32_t _npu = 0;
++    bool _flipDepth = false;
++    bool _heapLogged = false;
++    std::unique_ptr<DI_Dx12> _di;
++    ID3D12Resource* _flip = nullptr;
++    D3D12_RESOURCE_STATES _flipState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
++    ID3D12DescriptorHeap* _dummyHeap[2] = { nullptr, nullptr };
+ };
+diff --git a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
+index 3ccfac10..48ab582b 100644
+--- a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
++++ b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
+@@ -315,8 +315,9 @@ bool SGSR3FeatureDx12::CreatePipelines(ID3D12Device* device)
+             (RenderWidth() < 645 || RenderHeight() < 360 || RenderWidth() > 1920 || RenderHeight() > 1080 ||
+              TargetWidth() != 1920 || TargetHeight() != 1080))
+         {
+-            LOG_WARN("SGSR3: FSR 4.1 Lite runs only from 645x360 to 1920x1080 render -> 1920x1080, not {0}x{1} -> {2}x{3}; Vela AI instead",
++            LOG_WARN("SGSR3: FSR 4.1 Lite runs only from 645x360 to 1920x1080 render -> 1920x1080, not {0}x{1} -> {2}x{3}; SGSR 2 instead",
+                      RenderWidth(), RenderHeight(), TargetWidth(), TargetHeight());
++            VelaLive::Fsr4Failed() = true;
+             if (VelaLive::St().cur.npu != 0)
+             {
+                 LOG_INFO("Vela NPU: fallback size, GPU path");
+@@ -327,7 +328,10 @@ bool SGSR3FeatureDx12::CreatePipelines(ID3D12Device* device)
+             !_fsr4.Init(device, RenderWidth(), RenderHeight(), TargetWidth(), TargetHeight(), DepthInverted(), IsHdr(),
+                         LowResMV(), JitteredMV(), lm == VelaLive::Model::Fsr4Lite,
+                         (uint32_t) VelaLive::St().cur.lossy, (uint32_t) VelaLive::St().cur.npu))
+-            LOG_WARN("SGSR3: FSR 4 VK is not available here; Vela AI instead");
++        {
++            LOG_WARN("SGSR3: FSR 4 VK is not available here; SGSR 2 instead");
++            VelaLive::Fsr4Failed() = true;
++        }
+     }
+ 
+     // What the D3D12 device says about 16-bit shader arithmetic (why native half is refused, see the HLSL).
+@@ -678,14 +682,15 @@ bool SGSR3FeatureDx12::EvaluateFsr4(ID3D12GraphicsCommandList* cl, NVSDK_NGX_Par
+         f.frameTimeMs = 16.6f;
+     f.cameraNear = cfg.FsrCameraNear.value_or_default();
+     f.cameraFar = cfg.FsrCameraFar.value_or_default();
+-    if (DepthInverted())
++    if (DepthInverted() || _fsr4.FlipsDepth())  // the flipped copy is inverted depth
+         std::swap(f.cameraNear, f.cameraFar);
+     f.fovV = cfg.FsrVerticalFov.has_value() ? OptiMath::GetRadiansFromDeg(cfg.FsrVerticalFov.value()) : 1.0472f;
+     constexpr auto SRV = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+     constexpr auto UAV = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+     if (depth == nullptr || !_fsr4.Evaluate(cl, { color, SRV }, { depth, SRV }, { mv, SRV }, { output, UAV }, f))
+     {
+-        LOG_ERROR("SGSR3: FSR 4 VK frame failed; Vela AI from the next frame");
++        LOG_ERROR("SGSR3: FSR 4 VK frame failed; SGSR 2 from the next frame");
++        VelaLive::Fsr4Failed() = true;
+         _fsr4.Release();
+         return false;
+     }
+diff --git a/OptiScaler/upscalers/sgsr3/VelaLive.h b/OptiScaler/upscalers/sgsr3/VelaLive.h
+index d7a83639..ed81022e 100644
+--- a/OptiScaler/upscalers/sgsr3/VelaLive.h
++++ b/OptiScaler/upscalers/sgsr3/VelaLive.h
+@@ -56,6 +56,14 @@ struct Values
+     int npu = 0;    // FSR 4.1 Lite network on the NPU: 0 off, 1 exact, 2 async
+ };
+ 
++// Vela 0.8.13: FSR 4 / FSR 4 Lite cannot run in this game (provider refused, a frame failed): the handles go to
++// SGSR 2 until the panel picks another model (inputs/NVNGX_DLSS_Dx12.cpp)
++inline bool& Fsr4Failed()
++{
++    static bool failed = false;
++    return failed;
++}
++
+ inline const char* ModelName(Model m)
+ {
+     return m == Model::Ai ? "ai" : m == Model::P2b ? "p2b" : m == Model::Sr ? "sr" : m == Model::Sgsr2 ? "sgsr2" : m == Model::Fsr4 ? "fsr4" : m == Model::Fsr4Lite ? "fsr4lite" : m == Model::Fsr3 ? "fsr3" : "-";
+@@ -96,10 +104,9 @@ inline Values Parse(const std::string& text)
+         const std::string k = line.substr(0, eq), s = line.substr(eq + 1);
+         const float f = (float) atof(s.c_str());
+         if (k == "model")
+-            v.model = s == "ai"      ? Model::Ai
+-                      : s == "p2b"   ? Model::P2b
+-                      : s == "sr"    ? Model::Sr
+-                      : s == "sgsr2" ? Model::Sgsr2
++            // Vela 0.8.13: the live models are fsr4, fsr4lite, fsr3 and sgsr2; the removed Vela AI / Vela SR keys
++            // of an older live file (ai, p2b, sr, student) mean SGSR 2
++            v.model = s == "ai" || s == "p2b" || s == "sr" || s == "student" || s == "sgsr2" ? Model::Sgsr2
+                       : s == "fsr4"  ? Model::Fsr4
+                       : s == "fsr4lite" ? Model::Fsr4Lite
+                       : s == "fsr3"  ? Model::Fsr3

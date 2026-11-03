@@ -1,0 +1,19 @@
+#version 450
+// Zero-copy unpack. Same math as npu_unpack.comp, reading p3u_o (pc.q0) and p1f_o (pc.q1) straight from the
+// layer's imported fsr4npud dma-buf (uvec4 index i == words 4i..4i+3 of the 0.8.0 R32_UINT tensor image).
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0, std430) writeonly buffer S { uvec4 q[]; } scr;
+layout(set = 1, binding = 0, std430) readonly buffer T { uvec4 q[]; } t;
+layout(push_constant) uniform P { uint qin, q0, q1, pad; } pc;
+uint addsat(uint a, uint b) {
+  uint o = 0u;
+  for (int k = 0; k < 4; k++) { int s = bitfieldExtract(int(a), 8 * k, 8) + bitfieldExtract(int(b), 8 * k, 8); o = bitfieldInsert(o, uint(clamp(s, -128, 127)), 8 * k, 8); }
+  return o;
+}
+void main() { uint p = gl_GlobalInvocationID.x; if (p >= 521404u) return; uint hx = p % 962u, hy = p / 962u;
+  uvec4 v = uvec4(0u);
+  if (hx >= 1u && hx <= 960u && hy >= 1u && hy <= 540u) { uint x = hx - 1u, y = hy - 1u;
+    uvec4 a = t.q[pc.q0 + ((y >> 1) * 480u + (x >> 1)) * 4u + (y & 1u) * 2u + (x & 1u)] ^ uvec4(0x80808080u);
+    uvec4 b = t.q[pc.q1 + y * 960u + x] ^ uvec4(0x80808080u);
+    v = uvec4(addsat(a.x, b.x), addsat(a.y, b.y), addsat(a.z, b.z), addsat(a.w, b.w)); }
+  scr.q[1042808u + p] = v; }

@@ -1,0 +1,17 @@
+SR4 skipped-frame kernels inside assets/sgsr3/amd_fidelityfx_upscaler_vk.dll (lossy N > 1 modes)
+
+The skipped-frame kernels sr_r4 (reproject + rest / uncovered / edge rules) and sr_w (Lite K2 on the warped feature plane)
+contain rule code derived from "fsr4-shader-performance-overrides" (FSR 4.1.2 lossy, https://github.com/zgauthier2000/fsr4-shader-performance-overrides),
+which is licensed GPL-2.0-or-later. These kernels are licensed GPL-2.0-or-later as well:
+
+  This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public
+  License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later
+  version. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
+  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+  details: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+
+Source: provider/sr4-kernels/ in the Vela source repository (https://github.com/zrprod9-cmyk/vela): the GLSL sources
+(src/sr_r4.comp, src/sr_w.comp, src/sr_r.comp), the generator tools/gen_r4.py, the SPIR-V build scripts and the weights file
+they use, and build.sh, which rebuilds the SPIR-V and the header provider/overlay/gen/fsr4sr4-spv.hpp (the arrays the provider
+DLL embeds) and checks that the header is identical. The kernels are kept in separate files from the MIT recorder code.
+The provider DLL itself is fsr4vk (GPLv3, see the fsr4vk entry in README.txt); GPL-2.0-or-later code may be combined under GPLv3.

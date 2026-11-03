@@ -1,0 +1,32 @@
+name: Feature request or game request
+description: Ask for a feature, a device, or support for a game.
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is it about
+      options:
+        - A game (support or a profile)
+        - A device / chip
+        - The panel
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like
+      description: What should Vela do, and why it helps you.
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game (if any)
+      description: Name, and which upscalers it offers in its settings (DLSS / FSR 2 / FSR 3.1 / XeSS / none).
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: Device, what you tried, links.

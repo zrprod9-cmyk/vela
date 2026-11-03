@@ -1,0 +1,21 @@
+#version 460
+// n = word count | stride << 16 (stride 3 = 0.8.8 packed triples, 4 = 16-byte aligned triples, word 3 = 0).
+// Full FSR 4.1.1 on the NPU, per-frame GPU choice from the layer's WAIT ack (final status written on the GPU timeline).
+// ack OK (magic VELAVCK1, status 0) -> live = unpack triple from full, passes 2..24 = (0,0,1); else (no wait, error, timeout)
+// -> unpack (0,0,1), passes 2..24 = their normal groups from full (the GPU network on X0 of this frame).
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+layout(local_size_x = 128) in;
+layout(buffer_reference, std430, buffer_reference_align = 4) buffer W { uint v[]; };
+layout(push_constant) uniform P { uint64_t ack; uint64_t full; uint64_t live; uint have; uint n; } p;
+void main() {
+    uint i = gl_LocalInvocationIndex;
+    const uint s = p.n >> 16u, cnt = p.n & 0xFFFFu;
+    if (i >= cnt) return;
+    bool ok = false;
+    if (p.have != 0u) { W a = W(p.ack); ok = a.v[0] == 0x414C4556u && a.v[1] == 0x314B4356u && a.v[3] == 0u; }
+    W f = W(p.full); W l = W(p.live);
+    const uint c = i % s;
+    uint z = (c == 2u) ? 1u : 0u;
+    l.v[i] = (i < s) == ok ? f.v[i] : z;   // stride 4: word 3 of every triple is 0 in full and in z
+}

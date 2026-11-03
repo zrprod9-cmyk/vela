@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Known issues and FAQ
+    url: https://github.com/zrprod9-cmyk/vela#known-issues
+    about: Please check the known issues (Cyberpunk 2077, Ghostrunner, Control HDR …) before opening an issue.
+  - name: Privacy of problem reports
+    url: https://github.com/zrprod9-cmyk/vela#privacy
+    about: What the panel's Report a problem button collects and how to have a report deleted.

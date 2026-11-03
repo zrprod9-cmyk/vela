@@ -1,0 +1,23 @@
+#version 450
+// Vela's HDR wrap for games with extreme highlights (RE4: specular spikes up to ~3000 in the colour input).
+// FSR 2 accumulates such input in a reversible tonemapped space, so a spike blends with its neighbours instead of
+// surviving as a firefly; Vela gets the same: mode 0 before it (c / (1 + max(c))), mode 1 after it
+// (y / (1 - max(y))). Mode 2 is a plain copy (Vela's frame into the game's final output when RCAS is skipped).
+// The output image has no format qualifier (shaderStorageImageWriteWithoutFormat): it may be the game's
+// R11G11B10 or RGBA16F texture.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0) uniform writeonly image2D Out;
+layout(set = 0, binding = 1) uniform sampler2D In;
+layout(push_constant) uniform P { ivec2 size; int mode; int pad; } pc;
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(p, pc.size))) return;
+    vec3 c = max(texelFetch(In, p, 0).rgb, vec3(0.0));
+    vec3 o = c;
+    if (pc.mode == 0)
+        o = c / (1.0 + max(max(c.r, c.g), c.b));
+    else if (pc.mode == 1)
+        o = c / (1.0 - min(max(max(c.r, c.g), c.b), 0.999));
+    imageStore(Out, p, vec4(o, 1.0));
+}

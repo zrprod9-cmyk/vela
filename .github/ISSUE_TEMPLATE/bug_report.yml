@@ -1,0 +1,80 @@
+name: Bug report
+description: Something does not work in a game, the panel or the NPU part.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you! First press **Report a problem** in the Vela panel and send the report: it gives you a number
+        `VELA-XXXXXX` and carries the logs we need (nothing is sent without your click; see Privacy in the README).
+  - type: input
+    id: report_id
+    attributes:
+      label: Report number
+      description: The VELA-XXXXXX number the panel showed after sending. Write "none" if you could not send one.
+      placeholder: VELA-XXXXXX
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: Device
+      options:
+        - Retroid Pocket 6
+        - AYN Odin 2 / Odin 2 Mini / Odin 2 Portal / Thor
+        - AYN Odin 3
+        - Other (write it below)
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Vela and armadaOS versions
+      description: Vela version from the panel or Decky; armadaOS build if you know it.
+      placeholder: Vela 0.8.16, Armada 20261010
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      description: Name of the game and, if you know it, its upscaler setting (DLSS / FSR 2 / FSR 3.1 / XeSS) and quality preset.
+      placeholder: Control, DLSS Performance
+    validations:
+      required: true
+  - type: dropdown
+    id: model
+    attributes:
+      label: Model picked in the Vela panel
+      options:
+        - FSR 4
+        - FSR 4 Fast
+        - FSR 3
+        - SGSR 2
+        - Off
+    validations:
+      required: true
+  - type: dropdown
+    id: npu
+    attributes:
+      label: Vela NPU system part
+      options:
+        - Installed (panel shows the NPU as ready)
+        - Not installed
+        - Panel says installed incompletely / service not running
+        - I do not know
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you saw (crash, hang, bad picture, low FPS …). Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Pick FSR 4 in the panel
+        2. Start the game, choose DLSS in the game's settings
+        3. ...

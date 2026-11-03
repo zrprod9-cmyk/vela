@@ -1,0 +1,200 @@
+--- a/OptiScaler/upscalers/sgsr3/VelaLive.h
++++ b/OptiScaler/upscalers/sgsr3/VelaLive.h
+@@ -6,6 +6,8 @@
+ //                          Vela SR, OptiScaler's SGSR 2, or FSR 4.1.1 VK INT8 (fsr4vk provider inside SGSR 3, Fsr4VkBridge.h;
+ //                          Vela AI when it cannot run); fsr4lite = FSR 4.1.2 Lite on the same provider (0.7.0);
+ //                          a change re-creates the upscaler (NVNGX_DLSS_Dx12.cpp)
++//   npu=0|1|2           FSR 4.1 Lite network on the Hexagon NPU (VK_LAYER_VELA_npu): 0 off, 1 exact, 2 async (one frame
++//                       late); absent = 0; a change re-creates the context (needs lossy=1)
+ //   lossy=<N>           FSR 4.1 Lite: the network every N-th frame (1 = every frame, exact; 2..8 lossy); a change
+ //                       re-creates the upscaler
+ //   ratio=<r>|game      render size = display / r through the DLSS optimal-settings answer; "game" = the game's own
+@@ -48,6 +50,7 @@
+     float fresh = -1.0f;
+     int sq = -1, ncap = -1, disocc = -1;
+     int lossy = 1;  // FSR 4.1 Lite: network every N-th frame
++    int npu = 0;    // FSR 4.1 Lite network on the NPU: 0 off, 1 exact, 2 async
+ };
+ 
+ inline const char* ModelName(Model m)
+@@ -115,6 +118,8 @@
+             v.disocc = s == "1";
+         else if (k == "lossy")
+             v.lossy = std::max(1, std::min(atoi(s.c_str()), 8));
++        else if (k == "npu")
++            v.npu = std::max(0, std::min(atoi(s.c_str()), 2));
+     }
+     return v;
+ }
+@@ -194,9 +199,9 @@
+     s.text = text;
+     s.cur = Parse(text);
+     ApplyRatio(s.cur);
+-    LOG_INFO("Vela live ({0}): model {1} ratio {2} amax {3} alphak {4} mk {5} fresh {6} sq {7} ncap {8} disocc {9} lossy {10}",
++    LOG_INFO("Vela live ({0}): model {1} ratio {2} amax {3} alphak {4} mk {5} fresh {6} sq {7} ncap {8} disocc {9} lossy {10} npu {11}",
+              text.empty() ? "no file, launch settings" : p, ModelName(s.cur.model), s.cur.ratio, s.cur.amax,
+-             s.cur.alphaK, s.cur.mk, s.cur.fresh, s.cur.sq, s.cur.ncap, s.cur.disocc, s.cur.lossy);
++             s.cur.alphaK, s.cur.mk, s.cur.fresh, s.cur.sq, s.cur.ncap, s.cur.disocc, s.cur.lossy, s.cur.npu);
+     return s.cur;
+ }
+ 
+--- a/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
++++ b/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
+@@ -92,6 +92,14 @@
+     uint32_t networkEvery;
+ };
+ constexpr ffxStructType_t kVelaLossy = 0x56454C414C535931ull;  // "VELALSY1"
++// Vela 0.8.0: FSR 4.1 Lite network on the Hexagon NPU through VK_LAYER_VELA_npu (1 exact, 2 async); only sent for Lite
++// with npu != 0, so a provider without it refuses the context and the bridge logs it (SGSR3 then runs Vela AI)
++struct VelaNpu
++{
++    ffxApiHeader header;
++    uint32_t mode;
++};
++constexpr ffxStructType_t kVelaNpu = 0x56454C414E505531ull;  // "VELANPU1"
+ using PfnCreate = ffxReturnCode_t (*)(ffxContext*, ffxApiHeader*, const void*);
+ using PfnDestroy = ffxReturnCode_t (*)(ffxContext*, const void*);
+ using PfnDispatch = ffxReturnCode_t (*)(ffxContext*, const ffxApiHeader*);
+@@ -139,11 +147,12 @@
+     };
+ 
+     bool Init(ID3D12Device* device, uint32_t rw, uint32_t rh, uint32_t dw, uint32_t dh, bool depthInverted, bool hdr,
+-              bool lowResMv, bool jitteredMv, bool lite = false, uint32_t networkEvery = 1)
++              bool lowResMv, bool jitteredMv, bool lite = false, uint32_t networkEvery = 1, uint32_t npuMode = 0)
+     {
+         Release();
+         _lite = lite;
+         _every = lite ? std::max(1u, networkEvery) : 1u;
++        _npu = lite && _every == 1 ? std::min(npuMode, 2u) : 0u;
+         _rw = rw;
+         _rh = rh;
+         _dw = dw;
+@@ -230,6 +239,9 @@
+         Fsr4Vk::VelaLossy lossy {};
+         lossy.header.type = Fsr4Vk::kVelaLossy;
+         lossy.networkEvery = _every;
++        Fsr4Vk::VelaNpu npu {};
++        npu.header.type = Fsr4Vk::kVelaNpu;
++        npu.mode = _npu;
+         // Turnip has one queue family; vkd3d-proton records the game's direct queue on it
+         Fsr4Vk::DeviceFeatures df {};
+         df.header.type = Fsr4Vk::kDeviceFeatures;
+@@ -237,8 +249,14 @@
+         c.header.pNext = &b.header;
+         b.header.pNext = &ov.header;
+         ov.header.pNext = &df.header;
++        Fsr4Vk::ffxApiHeader* tail = &df.header;
+         if (_lite && _every > 1)
+-            df.header.pNext = &lossy.header;
++        {
++            tail->pNext = &lossy.header;
++            tail = &lossy.header;
++        }
++        if (_npu)
++            tail->pNext = &npu.header;
+         const auto r = _create(&_ctx, &c.header, nullptr);
+         if (r != 0 || !_ctx)
+         {
+@@ -251,6 +269,12 @@
+             return false;
+         LOG_INFO("Vela FSR 4 VK: FSR {} VK INT8 context {}x{} -> {}x{} (hdr {}, network every {} frames)",
+                  _lite ? "4.1.2 Lite" : _v402 ? "4.0.2" : "4.1.1", rw, rh, dw, dh, hdr, _every);
++        // apps_npu/docs/11-npu-log-lines.md F3: the provider prints F1/F2/F4 itself (Message below, verbatim)
++        if (_lite && _npu == 0 && NpuShown())
++        {
++            LOG_INFO("Vela NPU: off");
++            NpuShown() = false;
++        }
+         _ready = true;
+         return true;
+     }
+@@ -355,6 +379,14 @@
+         uint32_t depthUsage = 0;
+     };
+ 
++  public:
++    static bool& NpuShown()
++    {
++        static bool shown = false;  // a "Vela NPU: on/fallback" line was printed in this process
++        return shown;
++    }
++
++  private:
+     static void Message(uint32_t type, const wchar_t* message)
+     {
+         if (message == nullptr)
+@@ -362,6 +394,12 @@
+         std::string s;
+         for (const wchar_t* p = message; *p && s.size() < 400; p++)
+             s += (*p < 128) ? (char) *p : '?';
++        if (s.rfind("Vela NPU: ", 0) == 0)
++        {
++            NpuShown() = true;
++            LOG_INFO("{}", s);  // the plugin parses these lines exactly
++            return;
++        }
+         LOG_INFO("Vela FSR 4 VK provider ({}): {}", type, s);
+     }
+ 
+@@ -493,4 +531,5 @@
+     bool _v402 = false;
+     bool _lite = false;
+     uint32_t _every = 1;
++    uint32_t _npu = 0;
+ };
+--- a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
++++ b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
+@@ -312,12 +312,19 @@
+         // another size is refused here with a line the plugin shows (py_modules/sgsr3.py log_summary)
+         if (lm == VelaLive::Model::Fsr4Lite &&
+             (RenderWidth() != 960 || RenderHeight() != 540 || TargetWidth() != 1920 || TargetHeight() != 1080))
++        {
+             LOG_WARN("SGSR3: FSR 4.1 Lite runs only 960x540 -> 1920x1080, not {0}x{1} -> {2}x{3}; Vela AI instead",
+                      RenderWidth(), RenderHeight(), TargetWidth(), TargetHeight());
++            if (VelaLive::St().cur.npu != 0)
++            {
++                LOG_INFO("Vela NPU: fallback size, GPU path");
++                Fsr4VkBridge::NpuShown() = true;
++            }
++        }
+         else if ((lm == VelaLive::Model::Fsr4 || lm == VelaLive::Model::Fsr4Lite) &&
+             !_fsr4.Init(device, RenderWidth(), RenderHeight(), TargetWidth(), TargetHeight(), DepthInverted(), IsHdr(),
+                         LowResMV(), JitteredMV(), lm == VelaLive::Model::Fsr4Lite,
+-                        (uint32_t) VelaLive::St().cur.lossy))
++                        (uint32_t) VelaLive::St().cur.lossy, (uint32_t) VelaLive::St().cur.npu))
+             LOG_WARN("SGSR3: FSR 4 VK is not available here; Vela AI instead");
+     }
+ 
+--- a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
++++ b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+@@ -1032,19 +1032,21 @@
+         {
+             VelaLive::Model model = VelaLive::Model::Unset;
+             int lossy = 1;
++            int npu = 0;
+             int tries = 0;
+         };
+         static ankerl::unordered_dense::map<unsigned int, VelaHandle> velaHandles;
+         const VelaLive::Values& lv = VelaLive::Poll();
+         const VelaLive::Model m = lv.model;
+         const int lossy = m == VelaLive::Model::Fsr4Lite ? lv.lossy : 1;
++        const int npu = m == VelaLive::Model::Fsr4Lite ? lv.npu : 0;
+         const Upscaler want = m == VelaLive::Model::Sgsr2   ? Upscaler::SGSR2
+                               : m == VelaLive::Model::Unset ? cfg.Dx12Upscaler.value_or_default()
+                                                             : Upscaler::SGSR3;
+         const bool seen = velaHandles.contains(handleId);
+         auto& h = velaHandles[handleId];
+         bool change = false;
+-        if (seen && (h.model != m || h.lossy != lossy))
++        if (seen && (h.model != m || h.lossy != lossy || h.npu != npu))
+         {
+             h.tries = 0;
+             change = true;  // the panel changed the model: Vela AI <-> P2b <-> SR need a re-create on the same backend
+@@ -1054,6 +1056,7 @@
+             change = true;  // a new handle, or a backend change that did not take yet
+         h.model = m;
+         h.lossy = lossy;
++        h.npu = npu;
+         if (change)
+         {
+             h.tries++;

@@ -1,0 +1,1207 @@
+diff --git a/OptiScaler/fsr4/FSR4Upgrade.cpp b/OptiScaler/fsr4/FSR4Upgrade.cpp
+index 294fe82f..a6d5f1b5 100644
+--- a/OptiScaler/fsr4/FSR4Upgrade.cpp
++++ b/OptiScaler/fsr4/FSR4Upgrade.cpp
+@@ -210,6 +210,36 @@ HRESULT STDMETHODCALLTYPE AmdExtD3DDevice8::GetWaveMatrixProperties(uint64_t* co
+ {
+     LOG_TRACE(": {}", *count);
+ 
++    // Vela: with the INT8 model forced on a GPU that is not AMD (the Adreno), report RDNA3's 16x16x16
++    // integer WMMA combinations, so the FSR 4.1 SDK upscaler takes its INT8 model instead of falling back to FSR 3.1
++    // (it asks once with room for 14 entries); whether vkd3d-proton can run those WMMA ops is what this tests
++    if (fsr4Support == FSR4Support::INT8 && waveMatrixProperties != nullptr && *count >= 3)
++    {
++        const AmdExtWaveMatrixPropertiesType combos[][4] = {
++            { float16, float16, float32, float32 },
++            { sint8, sint8, sint32, sint32 },
++            { uint8, uint8, sint32, sint32 },
++            { sint8, uint8, sint32, sint32 },
++            { uint8, sint8, sint32, sint32 },
++        };
++        uint64_t n = 0;
++        for (const auto& c : combos)
++        {
++            if (n >= *count)
++                break;
++            auto& w = waveMatrixProperties[n++];
++            w.mSize = w.nSize = w.kSize = 16;
++            w.aType = c[0];
++            w.bType = c[1];
++            w.cType = c[2];
++            w.resultType = c[3];
++            w.saturatingAccumulation = false;
++        }
++        *count = n;
++        LOG_INFO("Vela: GetWaveMatrixProperties -> {} INT8/FP16 WMMA combinations (FSR 4 INT8 forced)", n);
++        return S_OK;
++    }
++
+     waveMatrixProperties->mSize = 16;
+     waveMatrixProperties->nSize = 16;
+     waveMatrixProperties->kSize = 16;
+diff --git a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+index 6d2570fc..10670cd6 100644
+--- a/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
++++ b/OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp
+@@ -22,6 +22,7 @@
+ #include "detours/detours.h"
+ #include <ankerl/unordered_dense.h>
+ #include <misc/IdentifyGpu.h>
++#include <upscalers/sgsr3/VelaLive.h>
+ 
+ static ankerl::unordered_dense::map<unsigned int, ContextData<IFeature_Dx12>> Dx12Contexts;
+ static std::unordered_map<unsigned int, NVSDK_NGX_Feature> HandleToFeature;
+@@ -1020,6 +1021,72 @@ static NVSDK_NGX_Result TryEvaluateOptiFeature(ID3D12GraphicsCommandList* InCmdL
+     // To avoid capturing potential upscaler change (creation) and then upscaling itself
+     D3D12Hooks::SetRootSignatureTracking(false);
+ 
++    // Vela live (upscalers/sgsr3/VelaLive.h): the panel's model re-creates the upscaler -- SGSR 3 for
++    // Vela AI / P2b / Vela SR (its Init reads the model), SGSR 2, FSR 4 (FFX), or the ini's upscaler when the file goes away
++    // Per handle: the game makes and releases features (Into the Dead: two at once, new ones after a menu change), so
++    // each one follows the model -- a new handle of the wrong backend switches on its first frame, a model change
++    // re-creates every handle once, and a backend that keeps failing is tried at most twice per model
++    if (feature != nullptr && !state.changeBackend[handleId])
++    {
++        struct VelaHandle
++        {
++            VelaLive::Model model = VelaLive::Model::Unset;
++            int tries = 0;
++        };
++        static ankerl::unordered_dense::map<unsigned int, VelaHandle> velaHandles;
++        const VelaLive::Model m = VelaLive::Poll().model;
++        const Upscaler want = m == VelaLive::Model::Sgsr2   ? Upscaler::SGSR2
++                              : m == VelaLive::Model::Unset ? cfg.Dx12Upscaler.value_or_default()
++                                                            : Upscaler::SGSR3;
++        const bool seen = velaHandles.contains(handleId);
++        auto& h = velaHandles[handleId];
++        bool change = false;
++        if (seen && h.model != m)
++        {
++            h.tries = 0;
++            change = true;  // the panel changed the model: Vela AI <-> P2b <-> SR need a re-create on the same backend
++        }
++        else if (feature->GetUpscalerType() != want && h.tries < 2 &&
++                 (m != VelaLive::Model::Unset || seen))
++            change = true;  // a new handle, or a backend change that did not take yet
++        h.model = m;
++        if (change)
++        {
++            h.tries++;
++            LOG_INFO("Vela live: handle {0} model {1} -> {2}", handleId, VelaLive::ModelName(m), UpscalerDisplayName(want));
++            state.newBackend = want;
++            state.changeBackend[handleId] = true;
++        }
++    }
++
++    // Vela live: the game keeps its DLSS feature and draws a smaller subrect (dynamic resolution; the panel's ratio went
++    // down). SGSR 3 is made for one render size: re-created at the subrect once that size held for 30 frames (once per
++    // size, so a game whose subrect moves every frame is left alone)
++    if (feature != nullptr && !state.changeBackend[handleId] && feature->GetUpscalerType() == Upscaler::SGSR3)
++    {
++        unsigned int sw = 0, sh = 0;
++        static unsigned int lastW = 0, lastH = 0, held = 0;
++        if (InParameters->Get(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Width, &sw) == NVSDK_NGX_Result_Success &&
++            InParameters->Get(NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Height, &sh) == NVSDK_NGX_Result_Success &&
++            sw > 0 && sh > 0 && (sw != feature->RenderWidth() || sh != feature->RenderHeight()))
++        {
++            held = (sw == lastW && sh == lastH) ? held + 1 : 0;
++            lastW = sw;
++            lastH = sh;
++            if (held == 30)
++            {
++                LOG_INFO("Vela live: the game draws {0}x{1}, SGSR 3 made for {2}x{3}: re-created", sw, sh,
++                         feature->RenderWidth(), feature->RenderHeight());
++                VelaLive::SubW = sw;
++                VelaLive::SubH = sh;
++                state.newBackend = Upscaler::SGSR3;
++                state.changeBackend[handleId] = true;
++            }
++        }
++        else
++            held = 0;
++    }
++
+     // Backend change or recreation requested
+     if (state.changeBackend[handleId])
+     {
+diff --git a/OptiScaler/misc/IdentifyGpu.cpp b/OptiScaler/misc/IdentifyGpu.cpp
+index 06e6a7db..c547ee29 100644
+--- a/OptiScaler/misc/IdentifyGpu.cpp
++++ b/OptiScaler/misc/IdentifyGpu.cpp
+@@ -594,6 +594,22 @@ void IdentifyGpu::updateD3d12Capabilities(D3d12Proxy::PFN_D3D12CreateDevice o_D3
+             }
+         }
+ 
++        // Vela: a forced FSR 4 model holds even when the test D3D12 device above was not made (Adreno
++        // under vkd3d-proton logged "fsr4: false" with Fsr4ForceModel=2), so FSR 4 INT8 can be tried on the Adreno
++        if (const auto forced = Config::Instance()->Fsr4ForceModel.value_or_default(); forced != FSR4Support::None)
++        {
++            for (auto& gpuInfo : cache)
++            {
++                if (gpuInfo.fsr4Support == FSR4Support::None)
++                {
++                    gpuInfo.fsr4Support = forced;
++                    gpuInfo.fsr4ForcedSupport = true;
++                    LOG_INFO("Vela: FSR 4 model {} forced on {:X}:{:X} (no test device result)", (int) forced,
++                             (uint32_t) gpuInfo.vendorId, gpuInfo.deviceId);
++                }
++            }
++        }
++
+         // Convert old config
+         // Apply force int8 if current GPU doesn't support int8 but old config was set
+         if (!cache.empty() && Config::Instance()->_DONTUSE_Fsr4ForceEnableInt8.has_value() &&
+diff --git a/OptiScaler/spoofing/Dxgi_Spoofing.cpp b/OptiScaler/spoofing/Dxgi_Spoofing.cpp
+index c0371249..11bf8de0 100644
+--- a/OptiScaler/spoofing/Dxgi_Spoofing.cpp
++++ b/OptiScaler/spoofing/Dxgi_Spoofing.cpp
+@@ -9,6 +9,7 @@
+ #include <algorithm>
+ #include <cctype>
+ #include <misc/IdentifyGpu.h>
++#include <upscalers/sgsr3/VelaLive.h>
+ 
+ // Resolves the calling module for the spoofing decisions below.
+ //
+@@ -75,6 +76,15 @@ inline static bool iequals(const std::string& a, const std::string& b) { return
+ HRESULT DxgiSpoofing::hkGetDesc3(IDXGIAdapter4* This, DXGI_ADAPTER_DESC3* pDesc)
+ {
+     auto result = o_GetDesc3(This, pDesc);
++    if (VelaLive::AmdForFfx && result == S_OK && pDesc != nullptr)
++    {
++        pDesc->VendorId = VendorId::AMD;
++        pDesc->DeviceId = 0x744C;  // Radeon RX 7900 XTX (gfx1100, RDNA3)
++        std::memset(pDesc->Description, 0, sizeof(pDesc->Description));
++        std::wcscpy(pDesc->Description, L"AMD Radeon RX 7900 XTX");
++        LOG_INFO("Vela: GetDesc3 -> RDNA3 for the FSR SDK");
++        return result;
++    }
+ 
+     auto caller = SpoofingCaller(_ReturnAddress());
+ 
+@@ -123,6 +133,15 @@ HRESULT DxgiSpoofing::hkGetDesc3(IDXGIAdapter4* This, DXGI_ADAPTER_DESC3* pDesc)
+ HRESULT DxgiSpoofing::hkGetDesc2(IDXGIAdapter2* This, DXGI_ADAPTER_DESC2* pDesc)
+ {
+     auto result = o_GetDesc2(This, pDesc);
++    if (VelaLive::AmdForFfx && result == S_OK && pDesc != nullptr)
++    {
++        pDesc->VendorId = VendorId::AMD;
++        pDesc->DeviceId = 0x744C;  // Radeon RX 7900 XTX (gfx1100, RDNA3)
++        std::memset(pDesc->Description, 0, sizeof(pDesc->Description));
++        std::wcscpy(pDesc->Description, L"AMD Radeon RX 7900 XTX");
++        LOG_INFO("Vela: GetDesc2 -> RDNA3 for the FSR SDK");
++        return result;
++    }
+ 
+     auto caller = SpoofingCaller(_ReturnAddress());
+ 
+@@ -173,6 +192,15 @@ HRESULT DxgiSpoofing::hkGetDesc2(IDXGIAdapter2* This, DXGI_ADAPTER_DESC2* pDesc)
+ HRESULT DxgiSpoofing::hkGetDesc1(IDXGIAdapter1* This, DXGI_ADAPTER_DESC1* pDesc)
+ {
+     auto result = o_GetDesc1(This, pDesc);
++    if (VelaLive::AmdForFfx && result == S_OK && pDesc != nullptr)
++    {
++        pDesc->VendorId = VendorId::AMD;
++        pDesc->DeviceId = 0x744C;  // Radeon RX 7900 XTX (gfx1100, RDNA3)
++        std::memset(pDesc->Description, 0, sizeof(pDesc->Description));
++        std::wcscpy(pDesc->Description, L"AMD Radeon RX 7900 XTX");
++        LOG_INFO("Vela: GetDesc1 -> RDNA3 for the FSR SDK");
++        return result;
++    }
+ 
+     auto caller = SpoofingCaller(_ReturnAddress());
+ 
+@@ -234,6 +262,15 @@ HRESULT DxgiSpoofing::hkGetDesc1(IDXGIAdapter1* This, DXGI_ADAPTER_DESC1* pDesc)
+ HRESULT DxgiSpoofing::hkGetDesc(IDXGIAdapter* This, DXGI_ADAPTER_DESC* pDesc)
+ {
+     auto result = o_GetDesc(This, pDesc);
++    if (VelaLive::AmdForFfx && result == S_OK && pDesc != nullptr)
++    {
++        pDesc->VendorId = VendorId::AMD;
++        pDesc->DeviceId = 0x744C;  // Radeon RX 7900 XTX (gfx1100, RDNA3)
++        std::memset(pDesc->Description, 0, sizeof(pDesc->Description));
++        std::wcscpy(pDesc->Description, L"AMD Radeon RX 7900 XTX");
++        LOG_INFO("Vela: GetDesc -> RDNA3 for the FSR SDK");
++        return result;
++    }
+ 
+     auto caller = SpoofingCaller(_ReturnAddress());
+ 
+diff --git a/OptiScaler/upscalers/ffx/FFXFeature_Dx12.cpp b/OptiScaler/upscalers/ffx/FFXFeature_Dx12.cpp
+index fa3ab364..9bb2ca20 100644
+--- a/OptiScaler/upscalers/ffx/FFXFeature_Dx12.cpp
++++ b/OptiScaler/upscalers/ffx/FFXFeature_Dx12.cpp
+@@ -1,5 +1,7 @@
+ #include <pch.h>
+ #include <Config.h>
++#include <misc/IdentifyGpu.h>
++#include <upscalers/sgsr3/VelaLive.h>
+ #include <Util.h>
+ #include <proxies/FfxApi_Proxy.h>
+ #include "FFXFeature_Dx12.h"
+@@ -643,8 +645,38 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
+     {
+         ScopedSkipSpoofingGlobal skipSpoofingGlobal {};
+ 
++        // Vela: the FSR SDK sees an RDNA3 adapter while it picks its model (FSR 4 INT8 forced, not AMD)
++        const auto gpu = IdentifyGpu::getPrimaryGpu();
++        struct VelaAmd
++        {
++            bool on;
++            explicit VelaAmd(bool o) : on(o) { if (on) VelaLive::AmdForFfx = true; }
++            ~VelaAmd() { if (on) VelaLive::AmdForFfx = false; }
++        } velaAmd(gpu.vendorId != VendorId::AMD && gpu.fsr4Support == FSR4Support::INT8);
++
+         QueryVersionsDx12(Device);
+ 
++        // Vela: the versions the FSR SDK offers, and with FSR 4 INT8 forced the newest of them (index 0 is not
++        // always the newest: the 4.1.2 upscaler DLL next to the 1.1.4 one)
++        {
++            auto& names = State::Instance().ffxUpscalerVersionNames;
++            int best = -1;
++            std::string all;
++            for (size_t i = 0; i < names.size(); i++)
++            {
++                const std::string n = names[i] != nullptr ? names[i] : "";
++                all += (i ? ", " : "") + std::to_string(i) + "=" + n;
++                if (best < 0 || n > std::string(names[best] != nullptr ? names[best] : ""))
++                    best = (int) i;
++            }
++            LOG_INFO("Vela: FFX upscaler versions: {}", all);
++            if (velaAmd.on && best >= 0)
++            {
++                Config::Instance()->FfxUpscalerIndex.set_volatile_value(best);
++                LOG_INFO("Vela: FFX upscaler index {} ({}) for FSR 4", best, names[best] != nullptr ? names[best] : "");
++            }
++        }
++
+         InitFlags();
+ 
+         ffxCreateBackendDX12Desc backendDesc = { 0 };
+diff --git a/OptiScaler/upscalers/ffx/FFXFeature_Dx12.h b/OptiScaler/upscalers/ffx/FFXFeature_Dx12.h
+index c5912b2c..6961250e 100644
+--- a/OptiScaler/upscalers/ffx/FFXFeature_Dx12.h
++++ b/OptiScaler/upscalers/ffx/FFXFeature_Dx12.h
+@@ -8,7 +8,9 @@
+ class FFXFeatureDx12 : public FFXFeature, public IFeature_Dx12
+ {
+   private:
+-    ID3D12Resource* smallerColor[2];
++    // nullptr: the destructor releases them, and they are made only when the colour is larger than the render
++    // size -- left uninitialised, the release of garbage crashed Into the Dead when it released a feature (Vela, 29.10)
++    ID3D12Resource* smallerColor[2] = { nullptr, nullptr };
+ 
+     NVSDK_NGX_Parameter* SetParameters(NVSDK_NGX_Parameter* InParameters);
+ 
+diff --git a/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h b/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
+new file mode 100644
+index 00000000..32e2aada
+--- /dev/null
++++ b/OptiScaler/upscalers/sgsr3/Fsr4VkBridge.h
+@@ -0,0 +1,477 @@
++#pragma once
++// FSR 4 VK INT8 as a Vela model (live model "fsr4", Vela 0.6.0). The fsr4vk provider (github.com/dvj5411/fsr4vk,
++// GPLv3; its AMD-derived model payloads under AMD's MIT licence; built by Vela from source,
++// decky-upscale/tools/build_fsr4vk.sh) is a native Vulkan FFX upscaler with a portable INT8 backend: no AMD runtime,
++// no VK_KHR_cooperative_matrix (Turnip has none). It runs here on vkd3d-proton's own VkDevice through the interop the
++// student uses: the game's D3D12 resources are handed over as VkImages in the layouts the provider samples
++// (SHADER_READ_ONLY_OPTIMAL inputs, GENERAL output) and moved back afterwards, inside the game's command list.
++// Included after pch.h and SGSR3Student_Vk.h (interop interface).
++#include <Config.h>
++#include <proxies/Ntdll_Proxy.h>
++#include <Util.h>
++
++#include <cstdint>
++#include <cstring>
++#include <filesystem>
++#include <string>
++#include <vector>
++
++namespace Fsr4Vk
++{
++// FFX API subset (FidelityFX SDK headers, MIT): the provider's ABI
++using ffxStructType_t = uint64_t;
++using ffxReturnCode_t = uint32_t;
++using ffxContext = void*;
++struct ffxApiHeader
++{
++    ffxStructType_t type;
++    ffxApiHeader* pNext;
++};
++struct FfxApiDimensions2D
++{
++    uint32_t width, height;
++};
++struct FfxApiFloatCoords2D
++{
++    float x, y;
++};
++struct FfxApiResourceDescription
++{
++    uint32_t type, format, width, height, depth, mipCount, flags, usage;
++};
++struct FfxApiResource
++{
++    void* resource;
++    FfxApiResourceDescription description;
++    uint32_t state;
++};
++struct CreateUpscale
++{
++    ffxApiHeader header;
++    uint32_t flags;
++    FfxApiDimensions2D maxRenderSize, maxUpscaleSize;
++    void (*fpMessage)(uint32_t type, const wchar_t* message);
++};
++struct DispatchUpscale
++{
++    ffxApiHeader header;
++    void* commandList;
++    FfxApiResource color, depth, motionVectors, exposure, reactive, transparencyAndComposition, output;
++    FfxApiFloatCoords2D jitterOffset, motionVectorScale;
++    FfxApiDimensions2D renderSize, upscaleSize;
++    bool enableSharpening;
++    float sharpness, frameTimeDelta, preExposure;
++    bool reset;
++    float cameraNear, cameraFar, cameraFovAngleVertical, viewSpaceToMetersFactor;
++    uint32_t flags;
++};
++struct BackendVk
++{
++    ffxApiHeader header;
++    VkDevice device;
++    VkPhysicalDevice physicalDevice;
++    PFN_vkGetDeviceProcAddr getDeviceProcAddr;
++};
++struct OverrideVersion
++{
++    ffxApiHeader header;
++    uint64_t versionId;
++};
++// fsr4vk's own create descriptor (provider/ffx_vk_create_device_features.h): the recording queue family turns on
++// its per-pass GPU timestamps when FSR4_VK_PROFILE_PATH is set (UINT32_MAX = unknown, profiling off)
++struct DeviceFeatures
++{
++    ffxApiHeader header;
++    uint32_t enabledFlags, apiVersion, queueFamilyIndex;
++};
++using PfnCreate = ffxReturnCode_t (*)(ffxContext*, ffxApiHeader*, const void*);
++using PfnDestroy = ffxReturnCode_t (*)(ffxContext*, const void*);
++using PfnDispatch = ffxReturnCode_t (*)(ffxContext*, const ffxApiHeader*);
++
++constexpr ffxStructType_t kCreateUpscale = 0x00010000u, kDispatchUpscale = 0x00010001u, kBackendVk = 3u,
++                          kOverrideVersion = 5u, kDeviceFeatures = 0x4653523444455643ull;
++constexpr uint32_t kDepthInverted = 1u << 3, kHdr = 1u << 0, kAutoExposure = 1u << 5;
++constexpr uint32_t kTexture2D = 2u;  // FFX_API_RESOURCE_TYPE_TEXTURE2D (BUFFER 0, TEXTURE1D 1)
++constexpr uint32_t kUsageUav = 1u << 1, kUsageDepth = 1u << 2, kUsageStencil = 1u << 5;
++constexpr uint32_t kStateUav = 1u << 1, kStateComputeRead = 1u << 2;
++// provider version ids (fsr4vk provider/ffx_vk_provider.cpp)
++constexpr uint64_t kFsr411 = (0xF5A5CA1Eull << 32) | ((4ull << 22) | (1ull << 12) | 1ull);
++constexpr uint64_t kFsr402 = (0xF5A5CA1Eull << 32) | ((4ull << 22) | (0ull << 12) | 2ull);
++
++// FfxApiSurfaceFormat values (ffx_api_types.h order): UNKNOWN 0, R32G32B32A32_TYPELESS 1, R32G32B32A32_UINT 2,
++// R32G32B32A32_FLOAT 3, R16G16B16A16_FLOAT 4, R32G32B32_FLOAT 5, R32G32_FLOAT 6, R8_UINT 7, R32_UINT 8,
++// R8G8B8A8_TYPELESS 9, R8G8B8A8_UNORM 10, R8G8B8A8_SNORM 11, R8G8B8A8_SRGB 12, B8G8R8A8_TYPELESS 13,
++// B8G8R8A8_UNORM 14, B8G8R8A8_SRGB 15, R11G11B10_FLOAT 16, R10G10B10A2_UNORM 17, R16G16_FLOAT 18, R16G16_UINT 19,
++// R16G16_SINT 20, R16_FLOAT 21, R16_UINT 22, R16_UNORM 23, R16_SNORM 24, R8_UNORM 25, R8G8_UNORM 26, R8G8_UINT 27,
++// R32_FLOAT 28, R9G9B9E5_SHAREDEXP 29 (checked against ffx_api_types.h of FidelityFX SDK 2.x)
++enum Fmt : uint32_t
++{
++    RGBA16F = 4,
++    R11G11B10F = 16,
++    RG16F = 18,
++    R32F = 28,
++    R9G9B9E5 = 29,
++};
++} // namespace Fsr4Vk
++
++class Fsr4VkBridge
++{
++  public:
++    struct Tex
++    {
++        ID3D12Resource* res = nullptr;
++        D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
++    };
++    struct Frame
++    {
++        float jitterX = 0, jitterY = 0, mvScaleX = 1, mvScaleY = 1, preExposure = 1, frameTimeMs = 16.6f;
++        float cameraNear = 0.1f, cameraFar = 1000.0f, fovV = 1.0f;
++        bool reset = false;
++    };
++
++    bool Init(ID3D12Device* device, uint32_t rw, uint32_t rh, uint32_t dw, uint32_t dh, bool depthInverted, bool hdr,
++              bool lowResMv, bool jitteredMv)
++    {
++        Release();
++        _rw = rw;
++        _rh = rh;
++        _dw = dw;
++        _dh = dh;
++        if (!depthInverted || !lowResMv || jitteredMv)
++        {
++            LOG_WARN("Vela FSR 4 VK: the provider needs inverted depth and render-size, non-jittered motion vectors "
++                     "(depthInverted {}, lowResMV {}, jitteredMV {})",
++                     depthInverted, lowResMv, jitteredMv);
++            return false;
++        }
++        if (FAILED(device->QueryInterface(__uuidof(ID3D12DXVKInteropDevice1), (void**) &_interop)) || !_interop)
++        {
++            LOG_ERROR("Vela FSR 4 VK: no vkd3d-proton interop");
++            return false;
++        }
++        VkInstance inst = VK_NULL_HANDLE;
++        if (FAILED(_interop->GetVulkanHandles(&inst, &_physical, &_vk)) || _vk == VK_NULL_HANDLE)
++        {
++            LOG_ERROR("Vela FSR 4 VK: GetVulkanHandles failed");
++            return false;
++        }
++        // the provider records with descriptor buffers: vkd3d-proton must have enabled the extension on its device
++        bool descBuf = false, sync2 = false;
++        UINT n = 0;
++        if (SUCCEEDED(_interop->GetDeviceExtensions(&n, nullptr)) && n > 0)
++        {
++            std::vector<const char*> ext(n);
++            if (SUCCEEDED(_interop->GetDeviceExtensions(&n, ext.data())))
++                for (auto* e : ext)
++                {
++                    descBuf |= e && !strcmp(e, "VK_EXT_descriptor_buffer");
++                    sync2 |= e && !strcmp(e, "VK_KHR_synchronization2");
++                }
++        }
++        LOG_INFO("Vela FSR 4 VK: vkd3d device extensions: descriptor_buffer {}, synchronization2 {}", descBuf, sync2);
++        if (!descBuf)
++        {
++            LOG_ERROR("Vela FSR 4 VK: vkd3d-proton's device has no VK_EXT_descriptor_buffer, the provider cannot run");
++            return false;
++        }
++        // next to our dxgi.dll (the game folder), else OptiScaler's main folder (<game>\OptiScaler when it exists)
++        for (const auto& dir : { Util::DllPath().parent_path(),
++                                 std::filesystem::path(Config::Instance()->MainDllPath.value_or(L"")) })
++        {
++            const auto file = dir / L"amd_fidelityfx_upscaler_vk.dll";
++            if (_dll != nullptr || !std::filesystem::exists(file))
++                continue;
++            _dll = NtdllProxy::LoadLibraryExW_Ldr(file.wstring().c_str(), NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
++            if (!_dll)
++                LOG_ERROR("Vela FSR 4 VK: cannot load {0}: error {1}", wstring_to_string(file.wstring()),
++                          GetLastError());
++        }
++        if (!_dll)
++        {
++            LOG_ERROR("Vela FSR 4 VK: amd_fidelityfx_upscaler_vk.dll not found next to the DLL");
++            return false;
++        }
++        _create = (Fsr4Vk::PfnCreate) GetProcAddress(_dll, "ffxCreateContext");
++        _destroy = (Fsr4Vk::PfnDestroy) GetProcAddress(_dll, "ffxDestroyContext");
++        _dispatch = (Fsr4Vk::PfnDispatch) GetProcAddress(_dll, "ffxDispatch");
++        if (!_create || !_destroy || !_dispatch)
++        {
++            LOG_ERROR("Vela FSR 4 VK: the provider has no FFX exports");
++            return false;
++        }
++        Fsr4Vk::CreateUpscale c {};
++        c.header.type = Fsr4Vk::kCreateUpscale;
++        c.flags = Fsr4Vk::kDepthInverted | Fsr4Vk::kAutoExposure | (hdr ? Fsr4Vk::kHdr : 0u);
++        c.maxRenderSize = { rw, rh };
++        c.maxUpscaleSize = { dw, dh };
++        c.fpMessage = &Message;
++        Fsr4Vk::BackendVk b {};
++        b.header.type = Fsr4Vk::kBackendVk;
++        b.device = _vk;
++        b.physicalDevice = _physical;
++        b.getDeviceProcAddr = vkGetDeviceProcAddr;
++        Fsr4Vk::OverrideVersion ov {};
++        ov.header.type = Fsr4Vk::kOverrideVersion;
++        // VELA_FSR4_VER=402: FSR 4.0.2 (15 passes) instead of 4.1.1 -- A/B of the two models' cost
++        const char* ver = std::getenv("VELA_FSR4_VER");
++        _v402 = ver != nullptr && std::strcmp(ver, "402") == 0;
++        ov.versionId = _v402 ? Fsr4Vk::kFsr402 : Fsr4Vk::kFsr411;
++        // Turnip has one queue family; vkd3d-proton records the game's direct queue on it
++        Fsr4Vk::DeviceFeatures df {};
++        df.header.type = Fsr4Vk::kDeviceFeatures;
++        df.queueFamilyIndex = 0;
++        c.header.pNext = &b.header;
++        b.header.pNext = &ov.header;
++        ov.header.pNext = &df.header;
++        const auto r = _create(&_ctx, &c.header, nullptr);
++        if (r != 0 || !_ctx)
++        {
++            LOG_ERROR("Vela FSR 4 VK: ffxCreateContext failed ({}) for {}x{} -> {}x{}", r, rw, rh, dw, dh);
++            _ctx = nullptr;
++            return false;
++        }
++        if (!MakeFlush(device))
++            return false;
++        LOG_INFO("Vela FSR 4 VK: FSR {} VK INT8 context {}x{} -> {}x{} (hdr {})", _v402 ? "4.0.2" : "4.1.1", rw, rh, dw,
++                 dh, hdr);
++        _ready = true;
++        return true;
++    }
++
++    bool Ready() const { return _ready; }
++    bool SizesMatch(uint32_t rw, uint32_t rh, uint32_t dw, uint32_t dh) const
++    {
++        return rw == _rw && rh == _rh && dw == _dw && dh == _dh;
++    }
++
++    bool Evaluate(ID3D12GraphicsCommandList* cl, const Tex& color, const Tex& depth, const Tex& mv, const Tex& output,
++                  const Frame& f)
++    {
++        if (!_ready || !color.res || !depth.res || !mv.res || !output.res)
++            return false;
++        Img in[3], out;
++        if (!Get(color, in[0], false) || !Get(depth, in[1], true) || !Get(mv, in[2], false) || !Get(output, out, false))
++            return false;
++        Fsr4Vk::DispatchUpscale d {};
++        d.header.type = Fsr4Vk::kDispatchUpscale;
++        d.color = Res(in[0], _rw, _rh, Fsr4Vk::kStateComputeRead, 0);
++        d.depth = Res(in[1], _rw, _rh, Fsr4Vk::kStateComputeRead, in[1].depthUsage);
++        d.motionVectors = Res(in[2], _rw, _rh, Fsr4Vk::kStateComputeRead, 0);
++        d.output = Res(out, _dw, _dh, Fsr4Vk::kStateUav, Fsr4Vk::kUsageUav);
++        if (!d.color.description.format)
++            return Unsupported("colour", in[0].fmt);
++        if (!d.depth.description.format)
++            return Unsupported("depth", in[1].fmt);
++        if (!d.motionVectors.description.format)
++            return Unsupported("motion vectors", in[2].fmt);
++        if (!d.output.description.format)
++            return Unsupported("output", out.fmt);
++        d.jitterOffset = { f.jitterX, f.jitterY };
++        d.motionVectorScale = { f.mvScaleX, f.mvScaleY };
++        d.renderSize = { _rw, _rh };
++        d.upscaleSize = { _dw, _dh };
++        d.frameTimeDelta = f.frameTimeMs;
++        d.preExposure = f.preExposure > 0.0f ? f.preExposure : 1.0f;
++        d.reset = f.reset;
++        d.cameraNear = f.cameraNear;
++        d.cameraFar = f.cameraFar;
++        d.cameraFovAngleVertical = f.fovV;
++        // vkd3d-proton batches D3D12 barriers until the next command: a 4-byte copy makes it emit them first
++        cl->CopyBufferRegion(_flush[1], 0, _flush[0], 0, 4);
++        VkCommandBuffer cb = VK_NULL_HANDLE;
++        if (FAILED(_interop->BeginVkCommandBufferInterop(cl, &cb)) || cb == VK_NULL_HANDLE)
++        {
++            LOG_ERROR("Vela FSR 4 VK: BeginVkCommandBufferInterop failed");
++            return false;
++        }
++        Transition(cb, in, 3, out, true);
++        d.commandList = cb;
++        const auto r = _dispatch(&_ctx, &d.header);
++        Transition(cb, in, 3, out, false);
++        _interop->EndVkCommandBufferInterop(cl);
++        if (r != 0)
++        {
++            if (_failLogged++ < 3)
++                LOG_ERROR("Vela FSR 4 VK: ffxDispatch failed ({})", r);
++            return false;
++        }
++        if (_frames++ == 0)
++            LOG_INFO("Vela FSR 4 VK: first frame dispatched (colour fmt {}, depth fmt {}, mv fmt {}, out fmt {})",
++                     (int) in[0].fmt, (int) in[1].fmt, (int) in[2].fmt, (int) out.fmt);
++        return true;
++    }
++
++    void Release()
++    {
++        if (_ctx && _destroy)
++        {
++            if (_interop && _vk)
++                vkDeviceWaitIdle(_vk);  // the provider keeps up to eight frames in flight
++            _destroy(&_ctx, nullptr);
++        }
++        _ctx = nullptr;
++        for (auto*& b : _flush)
++            if (b)
++            {
++                b->Release();
++                b = nullptr;
++            }
++        if (_interop)
++        {
++            _interop->Release();
++            _interop = nullptr;
++        }
++        _ready = false;
++        _frames = 0;
++        // the provider DLL stays loaded (contexts of other features may still use it)
++    }
++
++    ~Fsr4VkBridge() { Release(); }
++
++  private:
++    struct Img
++    {
++        VkImage image = VK_NULL_HANDLE;
++        VkFormat fmt = VK_FORMAT_UNDEFINED;
++        VkImageLayout layout = VK_IMAGE_LAYOUT_GENERAL;
++        VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
++        uint32_t depthUsage = 0;
++    };
++
++    static void Message(uint32_t type, const wchar_t* message)
++    {
++        if (message == nullptr)
++            return;
++        std::string s;
++        for (const wchar_t* p = message; *p && s.size() < 400; p++)
++            s += (*p < 128) ? (char) *p : '?';
++        LOG_INFO("Vela FSR 4 VK provider ({}): {}", type, s);
++    }
++
++    bool Unsupported(const char* what, VkFormat f)
++    {
++        if (_failLogged++ < 3)
++            LOG_ERROR("Vela FSR 4 VK: {} format VkFormat {} is not one the provider takes", what, (int) f);
++        return false;
++    }
++
++    bool Get(const Tex& t, Img& img, bool depth)
++    {
++        UINT64 handle = 0, offset = 0;
++        if (FAILED(_interop->GetVulkanResourceInfo1(t.res, &handle, &offset, &img.fmt)) || handle == 0)
++            return false;
++        img.image = (VkImage) handle;
++        _interop->GetVulkanImageLayout(t.res, t.state, &img.layout);
++        if (depth)
++        {
++            const bool stencil = img.fmt == VK_FORMAT_D32_SFLOAT_S8_UINT;
++            const bool d = stencil || img.fmt == VK_FORMAT_D32_SFLOAT;
++            img.aspect = d ? (VkImageAspectFlags) (VK_IMAGE_ASPECT_DEPTH_BIT | (stencil ? VK_IMAGE_ASPECT_STENCIL_BIT : 0))
++                           : (VkImageAspectFlags) VK_IMAGE_ASPECT_COLOR_BIT;
++            img.depthUsage = d ? (Fsr4Vk::kUsageDepth | (stencil ? Fsr4Vk::kUsageStencil : 0u)) : 0u;
++        }
++        return true;
++    }
++
++    static uint32_t FfxFormat(VkFormat f)
++    {
++        switch (f)
++        {
++        case VK_FORMAT_R16G16B16A16_SFLOAT:
++            return Fsr4Vk::RGBA16F;
++        case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
++            return Fsr4Vk::R11G11B10F;
++        case VK_FORMAT_E5B9G9R9_UFLOAT_PACK32:
++            return Fsr4Vk::R9G9B9E5;
++        case VK_FORMAT_R16G16_SFLOAT:
++            return Fsr4Vk::RG16F;
++        case VK_FORMAT_R32_SFLOAT:
++        case VK_FORMAT_D32_SFLOAT:
++        case VK_FORMAT_D32_SFLOAT_S8_UINT:
++            return Fsr4Vk::R32F;
++        default:
++            return 0;
++        }
++    }
++
++    static Fsr4Vk::FfxApiResource Res(const Img& img, uint32_t w, uint32_t h, uint32_t state, uint32_t usage)
++    {
++        Fsr4Vk::FfxApiResource r {};
++        r.resource = (void*) img.image;
++        r.description.type = Fsr4Vk::kTexture2D;
++        r.description.format = FfxFormat(img.fmt);
++        r.description.width = w;
++        r.description.height = h;
++        r.description.depth = 1;
++        r.description.mipCount = 1;
++        r.description.usage = usage;
++        r.state = state;
++        return r;
++    }
++
++    // the provider samples its inputs as SHADER_READ_ONLY_OPTIMAL and writes the output as GENERAL; vkd3d-proton's
++    // layouts for the game's states go there and back around the dispatch
++    void Transition(VkCommandBuffer cb, const Img* in, int n, const Img& out, bool toProvider)
++    {
++        VkImageMemoryBarrier b[4] {};
++        uint32_t k = 0;
++        auto add = [&](const Img& img, VkImageLayout providerLayout)
++        {
++            if (img.layout == providerLayout)
++                return;
++            auto& x = b[k++];
++            x.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
++            x.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
++            x.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
++            x.oldLayout = toProvider ? img.layout : providerLayout;
++            x.newLayout = toProvider ? providerLayout : img.layout;
++            x.srcQueueFamilyIndex = x.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
++            x.image = img.image;
++            x.subresourceRange = { img.aspect, 0, 1, 0, 1 };
++        };
++        for (int i = 0; i < n; i++)
++            add(in[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
++        add(out, VK_IMAGE_LAYOUT_GENERAL);
++        VkMemoryBarrier mb { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
++        mb.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
++        mb.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
++        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &mb, 0,
++                             nullptr, k, k ? b : nullptr);
++    }
++
++    bool MakeFlush(ID3D12Device* device)
++    {
++        D3D12_HEAP_PROPERTIES hp { D3D12_HEAP_TYPE_DEFAULT };
++        D3D12_RESOURCE_DESC rd {};
++        rd.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
++        rd.Width = 256;
++        rd.Height = 1;
++        rd.DepthOrArraySize = 1;
++        rd.MipLevels = 1;
++        rd.SampleDesc.Count = 1;
++        rd.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
++        for (auto*& b : _flush)
++            if (FAILED(device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_COMMON,
++                                                       nullptr, IID_PPV_ARGS(&b))))
++            {
++                LOG_ERROR("Vela FSR 4 VK: flush buffers failed");
++                return false;
++            }
++        return true;
++    }
++
++    ID3D12DXVKInteropDevice1* _interop = nullptr;
++    VkDevice _vk = VK_NULL_HANDLE;
++    VkPhysicalDevice _physical = VK_NULL_HANDLE;
++    HMODULE _dll = nullptr;
++    Fsr4Vk::PfnCreate _create = nullptr;
++    Fsr4Vk::PfnDestroy _destroy = nullptr;
++    Fsr4Vk::PfnDispatch _dispatch = nullptr;
++    Fsr4Vk::ffxContext _ctx = nullptr;
++    ID3D12Resource* _flush[2] = { nullptr, nullptr };
++    uint32_t _rw = 0, _rh = 0, _dw = 0, _dh = 0;
++    uint64_t _frames = 0;
++    int _failLogged = 0;
++    bool _ready = false;
++    bool _v402 = false;
++};
+diff --git a/OptiScaler/upscalers/sgsr3/SGSR3Feature.cpp b/OptiScaler/upscalers/sgsr3/SGSR3Feature.cpp
+index 29dde0fd..3b37c1fc 100644
+--- a/OptiScaler/upscalers/sgsr3/SGSR3Feature.cpp
++++ b/OptiScaler/upscalers/sgsr3/SGSR3Feature.cpp
+@@ -1,4 +1,5 @@
+ #include "pch.h"
++#include "VelaLive.h"
+ #include "SGSR3Feature.h"
+ 
+ #include <Config.h>
+@@ -136,6 +137,25 @@ bool SGSR3Feature::UpdateSharedConstants(NVSDK_NGX_Parameter* InParameters)
+     }();
+     _constants.vflags = vf.first;
+     _constants.freshSoft = vf.second;
++    // Vela live (VelaLive.h): the panel's smoothing and switches over the launch options
++    if (const auto& lv = VelaLive::Cur(); lv.fresh >= 0.0f || lv.sq >= 0 || lv.ncap >= 0 || lv.disocc >= 0)
++    {
++        auto bit = [&](int on, uint32_t b)
++        {
++            if (on == 1)
++                _constants.vflags |= b;
++            else if (on == 0)
++                _constants.vflags &= ~b;
++        };
++        bit(lv.sq, 1u);
++        bit(lv.ncap, 4u);
++        bit(lv.disocc, 16u);
++        if (lv.fresh >= 0.0f)
++        {
++            _constants.freshSoft = lv.fresh;
++            bit(lv.fresh > 0.0f ? 1 : 0, 8u);
++        }
++    }
+     _constants.reactiveScale = 1.0f;
+     _constants.tcScale = 1.0f;
+ 
+diff --git a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
+index 4cbf9219..f86a85ae 100644
+--- a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
++++ b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.cpp
+@@ -4,6 +4,8 @@
+ 
+ #include <Config.h>
+ #include <Util.h>
++#include "VelaLive.h"
++#include <MathUtils.h>
+ 
+ #include <algorithm>
+ #include <cmath>
+@@ -297,6 +299,19 @@ bool SGSR3FeatureDx12::CreatePipelines(ID3D12Device* device)
+                      : v1Cs                                               ? Mode::V1Cs
+                      : envOrFile("OPTI_SGSR3_F16", "Z:\\tmp\\sgsr3_f16")       ? Mode::V1Fast16
+                                                                           : Mode::V1Fast;
++    // Vela live: the panel's model wins over the launch options (VelaLive.h)
++    if (const VelaLive::Model lm = VelaLive::Poll(true).model; !_abMode && lm != VelaLive::Model::Unset)
++    {
++        if (lm == VelaLive::Model::Ai || lm == VelaLive::Model::P2b || lm == VelaLive::Model::Fsr4)
++            _fixedMode = Mode::Student;
++        else if (lm == VelaLive::Model::Sr)
++            _fixedMode = Mode::V1Fast;
++        LOG_INFO("SGSR3: Vela live model {0}", VelaLive::ModelName(lm));
++        if (lm == VelaLive::Model::Fsr4 &&
++            !_fsr4.Init(device, RenderWidth(), RenderHeight(), TargetWidth(), TargetHeight(), DepthInverted(), IsHdr(),
++                        LowResMV(), JitteredMV()))
++            LOG_WARN("SGSR3: FSR 4 VK is not available here; Vela AI instead");
++    }
+ 
+     // What the D3D12 device says about 16-bit shader arithmetic (why native half is refused, see the HLSL).
+     D3D12_FEATURE_DATA_D3D12_OPTIONS o {};
+@@ -541,6 +556,21 @@ bool SGSR3FeatureDx12::InitInternal(ID3D12GraphicsCommandList* InCommandList, NV
+         return false;
+     }
+ 
++    // A game with DLSS dynamic resolution keeps its feature and draws a smaller subrect (Into the Dead after the Vela
++    // live ratio went down); re-created from an evaluate (NVNGX_DLSS_Dx12.cpp), SGSR 3 takes the subrect's size,
++    // since its images and the student are made for one render size
++    {
++        const unsigned int sw = VelaLive::SubW, sh = VelaLive::SubH;
++        VelaLive::SubW = VelaLive::SubH = 0;
++        if (sw > 0 && sh > 0 && sw <= _renderWidth && sh <= _renderHeight && (sw != _renderWidth || sh != _renderHeight))
++        {
++            LOG_INFO("SGSR3: render size {0}x{1} from the subrect (feature made for {2}x{3})", sw, sh, _renderWidth,
++                     _renderHeight);
++            _renderWidth = sw;
++            _renderHeight = sh;
++        }
++    }
++
+     if (Config::Instance()->OutputScalingEnabled.value_or_default() &&
+         (LowResMV() || RenderWidth() == DisplayWidth()))
+     {
+@@ -621,6 +651,40 @@ bool SGSR3FeatureDx12::InitInternal(ID3D12GraphicsCommandList* InCommandList, NV
+     return true;
+ }
+ 
++bool SGSR3FeatureDx12::EvaluateFsr4(ID3D12GraphicsCommandList* cl, NVSDK_NGX_Parameter* p, ID3D12Resource* color,
++                                    ID3D12Resource* depth, ID3D12Resource* mv, ID3D12Resource* output)
++{
++    auto& cfg = *Config::Instance();
++    Fsr4VkBridge::Frame f;
++    p->Get(NVSDK_NGX_Parameter_Jitter_Offset_X, &f.jitterX);
++    p->Get(NVSDK_NGX_Parameter_Jitter_Offset_Y, &f.jitterY);
++    if (p->Get(NVSDK_NGX_Parameter_MV_Scale_X, &f.mvScaleX) != NVSDK_NGX_Result_Success ||
++        p->Get(NVSDK_NGX_Parameter_MV_Scale_Y, &f.mvScaleY) != NVSDK_NGX_Result_Success)
++        f.mvScaleX = f.mvScaleY = 1.0f;
++    if (p->Get(NVSDK_NGX_Parameter_DLSS_Pre_Exposure, &f.preExposure) != NVSDK_NGX_Result_Success)
++        f.preExposure = 1.0f;
++    int reset = 0;
++    p->Get(NVSDK_NGX_Parameter_Reset, &reset);
++    f.reset = reset != 0 || _constants.reset != 0.0f;
++    if (p->Get(NVSDK_NGX_Parameter_FrameTimeDeltaInMsec, &f.frameTimeMs) != NVSDK_NGX_Result_Success ||
++        f.frameTimeMs < 1.0f)
++        f.frameTimeMs = 16.6f;
++    f.cameraNear = cfg.FsrCameraNear.value_or_default();
++    f.cameraFar = cfg.FsrCameraFar.value_or_default();
++    if (DepthInverted())
++        std::swap(f.cameraNear, f.cameraFar);
++    f.fovV = cfg.FsrVerticalFov.has_value() ? OptiMath::GetRadiansFromDeg(cfg.FsrVerticalFov.value()) : 1.0472f;
++    constexpr auto SRV = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
++    constexpr auto UAV = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
++    if (depth == nullptr || !_fsr4.Evaluate(cl, { color, SRV }, { depth, SRV }, { mv, SRV }, { output, UAV }, f))
++    {
++        LOG_ERROR("SGSR3: FSR 4 VK frame failed; Vela AI from the next frame");
++        _fsr4.Release();
++        return false;
++    }
++    return true;
++}
++
+ bool SGSR3FeatureDx12::InitFast(ID3D12Device* device)
+ {
+     // v1f: its bit set follows the D3D12 kernel's (v1a / v1b / v1c by scale)
+@@ -1023,7 +1087,7 @@ bool SGSR3FeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList
+                     LOG_INFO("SGSR3 student: alphaK {0}", k);
+                 return k;
+             }();
+-            sp.alphaK = alphaK;
++            sp.alphaK = VelaLive::Cur().alphaK > 0.0f ? VelaLive::Cur().alphaK : alphaK;
+             // OPTI_SGSR3_MK=<m>: the accumulation cap's motion term (game profile; Manor Lords, DRG 4), else the recipe's
+             // (the recipe's: the one Init picked, INT8 or fp16)
+             static const float mkEnv = []
+@@ -1034,7 +1098,7 @@ bool SGSR3FeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList
+                     LOG_INFO("SGSR3 student: mk {0} (OPTI_SGSR3_MK)", m);
+                 return m;
+             }();
+-            const float mk = mkEnv > 0.0f ? mkEnv : _student.DefaultMk();
++            const float mk = VelaLive::Cur().mk > 0.0f ? VelaLive::Cur().mk : mkEnv > 0.0f ? mkEnv : _student.DefaultMk();
+             sp.mk = mk;
+             // amax: the current sample's weight capped, w <= amax (report 37). One function of the upscale ratio for
+             // every game (Vela 0.4.13), the formula of the Vela AI training: min(C, 0.6 (2 / r)^2.2), C <= 0.6 --
+@@ -1049,7 +1113,7 @@ bool SGSR3FeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList
+                     LOG_INFO("SGSR3 student: amax {0} (OPTI_SGSR3_AMAX)", a);
+                 return a;
+             }();
+-            float amax = amaxEnv;
++            float amax = VelaLive::Cur().amax >= 0.0f ? VelaLive::Cur().amax : amaxEnv;
+             if (amax < 0.0f && !AMAX_BY_RATIO)
+                 amax = AMAX_FIXED;
+             if (amax < 0.0f)
+@@ -1071,7 +1135,10 @@ bool SGSR3FeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList
+             if (_timingEnabled)
+                 InCommandList->EndQuery(_timestampHeap, D3D12_QUERY_TYPE_TIMESTAMP,
+                                         _ringIndex * TimestampsPerFrame + 2);
+-            const bool ok = _student.Evaluate(
++            const bool ok = _fsr4.Ready() && _fsr4.SizesMatch(rwNow, rhNow, dwNow, dhNow)
++                ? EvaluateFsr4(InCommandList, InParameters, paramColor, useDepth ? paramDepth : nullptr, paramVelocity,
++                               paramOutput)
++                : _student.Evaluate(
+                 InCommandList, { paramColor, SRV }, { useDepth ? paramDepth : nullptr, SRV }, { paramVelocity, SRV },
+                 { paramReactive, SRV }, { paramTc, SRV }, { paramOutput, UAV }, sp, stReset,
+                 _dumper.Active() && !_dumper.InputsOnly() && _frameMode == Mode::Student);
+diff --git a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.h b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.h
+index 38b62dc0..ff1381c8 100644
+--- a/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.h
++++ b/OptiScaler/upscalers/sgsr3/SGSR3Feature_Dx12.h
+@@ -3,6 +3,7 @@
+ #include "SGSR3Feature.h"
+ #include "SGSR3Student_Vk.h"
+ #include "SGSR3Fast_Vk.h"
++#include "Fsr4VkBridge.h"
+ #include <upscalers/sgsr2/SGSR2Dumper.h>
+ #include <upscalers/IFeature_Dx12.h>
+ 
+@@ -76,6 +77,10 @@ class SGSR3FeatureDx12 : public SGSR3Feature, public IFeature_Dx12
+     void LogTiming();
+ 
+     SGSR3StudentVk _student;
++    // Vela live model "fsr4": FSR 4.1.1 VK INT8 (fsr4vk) on vkd3d-proton's device; the student stays as fallback
++    Fsr4VkBridge _fsr4;
++    bool EvaluateFsr4(ID3D12GraphicsCommandList* cl, NVSDK_NGX_Parameter* p, ID3D12Resource* color,
++                      ID3D12Resource* depth, ID3D12Resource* mv, ID3D12Resource* output);
+     Mode _lastVkMode = Mode::V1Cs;
+     bool _loggedVkFail = false;
+     bool _loggedVkSize = false;
+diff --git a/OptiScaler/upscalers/sgsr3/SGSR3Student_Vk.cpp b/OptiScaler/upscalers/sgsr3/SGSR3Student_Vk.cpp
+index 449efac9..494dd776 100644
+--- a/OptiScaler/upscalers/sgsr3/SGSR3Student_Vk.cpp
++++ b/OptiScaler/upscalers/sgsr3/SGSR3Student_Vk.cpp
+@@ -2,6 +2,7 @@
+ #include "SGSR3Student_Vk.h"
+ 
+ #include <Util.h>
++#include "VelaLive.h"
+ 
+ #include <algorithm>
+ #include <cstddef>
+@@ -526,8 +527,11 @@ bool SGSR3StudentVk::Init(ID3D12Device* device, uint32_t rw, uint32_t rh, uint32
+     {
+         const StRecipe& q = Q8Recipe();
+         const char* re = std::getenv("OPTI_SGSR3_RECIPE");
++        const VelaLive::Model lm = VelaLive::Cur().model;  // read by the feature's Init just before
+         std::string why;
+-        if (re != nullptr && std::string(re) == "fp16")
++        if (lm == VelaLive::Model::P2b)
++            why = "Vela live model p2b";
++        else if (lm != VelaLive::Model::Ai && re != nullptr && std::string(re) == "fp16")
+             why = "OPTI_SGSR3_RECIPE=fp16";
+         else if (CanRun(q, why))
+             want = &q;
+diff --git a/OptiScaler/upscalers/sgsr3/VelaLive.h b/OptiScaler/upscalers/sgsr3/VelaLive.h
+new file mode 100644
+index 00000000..6c4d8264
+--- /dev/null
++++ b/OptiScaler/upscalers/sgsr3/VelaLive.h
+@@ -0,0 +1,204 @@
++#pragma once
++// Vela live settings (Vela plugin 0.5.0): the Decky panel writes /tmp/vela-live/<appid>.ini (Z:\tmp\... in Wine) and
++// the running game picks it up without a restart. One "key=value" per line; a key that is absent keeps what the
++// launch options / OptiScaler.ini say:
++//   model=ai|p2b|sr|sgsr2|fsr4  Vela AI (the INT8 recipe when the device has it), Vela AI on the fp16 P2b recipe,
++//                          Vela SR, OptiScaler's SGSR 2, or FSR 4.1.1 VK INT8 (fsr4vk provider inside SGSR 3, Fsr4VkBridge.h;
++//                          Vela AI when it cannot run); a change re-creates the upscaler (NVNGX_DLSS_Dx12.cpp)
++//   ratio=<r>|game      render size = display / r through the DLSS optimal-settings answer; "game" = the game's own
++//   amax=<a>            Vela AI: the current sample's weight cap, 0 = none
++//   alphak=<k>          Vela AI: the nearest current sample damped by k (0.25..1)
++//   mk=<m>              Vela AI: the accumulation cap's motion term (1..64)
++//   fresh=<k>           Vela SR: softness only on young history (0 = sharp)
++//   sq=0|1 ncap=0|1 disocc=0|1   Vela SR switches (dark flicker / ghosting in motion / disocclusion)
++// The file is looked at every 15 frames (its write time and size); a change is logged once.
++// Included after pch.h (Config, State, LOG_*).
++#include <Config.h>
++
++#include <cmath>
++#include <cstdio>
++#include <cstdlib>
++#include <optional>
++#include <string>
++
++namespace VelaLive
++{
++enum class Model
++{
++    Unset,
++    Ai,
++    P2b,
++    Sr,
++    Sgsr2,
++    Fsr4
++};
++
++struct Values
++{
++    Model model = Model::Unset;
++    float ratio = -1.0f;  // > 0 fixed ratio, 0 = the game's, < 0 = not set
++    float amax = -1.0f;
++    float alphaK = -1.0f;
++    float mk = -1.0f;
++    float fresh = -1.0f;
++    int sq = -1, ncap = -1, disocc = -1;
++};
++
++inline const char* ModelName(Model m)
++{
++    return m == Model::Ai ? "ai" : m == Model::P2b ? "p2b" : m == Model::Sr ? "sr" : m == Model::Sgsr2 ? "sgsr2" : m == Model::Fsr4 ? "fsr4" : "-";
++}
++
++inline std::string Path()
++{
++    static const std::string path = []
++    {
++        std::string id;
++        for (const char* k : { "SteamAppId", "SteamGameId", "STEAM_COMPAT_APP_ID" })
++            if (const char* e = std::getenv(k); e != nullptr && e[0] >= '0' && e[0] <= '9')
++            {
++                id = e;
++                break;
++            }
++        return id.empty() ? std::string() : "Z:\\tmp\\vela-live\\" + id + ".ini";
++    }();
++    return path;
++}
++
++inline Values Parse(const std::string& text)
++{
++    Values v;
++    size_t pos = 0;
++    while (pos < text.size())
++    {
++        size_t end = text.find('\n', pos);
++        if (end == std::string::npos)
++            end = text.size();
++        std::string line = text.substr(pos, end - pos);
++        pos = end + 1;
++        while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
++            line.pop_back();
++        const size_t eq = line.find('=');
++        if (eq == std::string::npos || line[0] == '#')
++            continue;
++        const std::string k = line.substr(0, eq), s = line.substr(eq + 1);
++        const float f = (float) atof(s.c_str());
++        if (k == "model")
++            v.model = s == "ai"      ? Model::Ai
++                      : s == "p2b"   ? Model::P2b
++                      : s == "sr"    ? Model::Sr
++                      : s == "sgsr2" ? Model::Sgsr2
++                      : s == "fsr4"  ? Model::Fsr4
++                                     : Model::Unset;
++        else if (k == "ratio")
++            v.ratio = s == "game" ? 0.0f : (f >= 1.0f && f <= 6.0f ? f : -1.0f);
++        else if (k == "amax")
++            v.amax = f <= 0.0f ? 0.0f : std::fmin(f, 1.0f);
++        else if (k == "alphak")
++            v.alphaK = std::fmax(0.25f, std::fmin(f, 1.0f));
++        else if (k == "mk")
++            v.mk = std::fmax(1.0f, std::fmin(f, 64.0f));
++        else if (k == "fresh")
++            v.fresh = std::fmax(0.0f, std::fmin(f, 2.0f));
++        else if (k == "sq")
++            v.sq = s == "1";
++        else if (k == "ncap")
++            v.ncap = s == "1";
++        else if (k == "disocc")
++            v.disocc = s == "1";
++    }
++    return v;
++}
++
++struct Store
++{
++    Values cur;
++    std::string text;
++    FILETIME time {};
++    DWORD size = 0xffffffffu;
++    uint32_t calls = 0;
++    bool read = false;
++    std::optional<bool> ratioOn;  // the ini's override, restored when the panel's ratio goes away
++    std::optional<float> ratioValue;
++};
++
++inline Store& St()
++{
++    static Store s;
++    return s;
++}
++
++// The ratio goes to OptiScaler's own override: the game sees it the next time it asks for the optimal render size.
++inline void ApplyRatio(const Values& v)
++{
++    auto* c = Config::Instance();
++    auto& s = St();
++    if (!s.ratioOn.has_value())
++    {
++        s.ratioOn = c->UpscaleRatioOverrideEnabled.value_or_default();
++        s.ratioValue = c->UpscaleRatioOverrideValue.value_or_default();
++    }
++    if (v.ratio < 0.0f)
++    {
++        c->UpscaleRatioOverrideEnabled = *s.ratioOn;
++        c->UpscaleRatioOverrideValue = *s.ratioValue;
++    }
++    else if (v.ratio == 0.0f)
++        c->UpscaleRatioOverrideEnabled = false;
++    else
++    {
++        c->QualityRatioOverrideEnabled = false;
++        c->UpscaleRatioOverrideEnabled = true;
++        c->UpscaleRatioOverrideValue = v.ratio;
++    }
++}
++
++// Reads the file when it changed (at most every 15 calls, or now with force); returns the current values.
++inline const Values& Poll(bool force = false)
++{
++    auto& s = St();
++    const std::string& p = Path();
++    if (p.empty() || (s.read && !force && (s.calls++ % 15) != 0))
++        return s.cur;
++    s.read = true;
++    std::string text;
++    WIN32_FILE_ATTRIBUTE_DATA fa {};
++    if (GetFileAttributesExA(p.c_str(), GetFileExInfoStandard, &fa))
++    {
++        if (CompareFileTime(&fa.ftLastWriteTime, &s.time) == 0 && fa.nFileSizeLow == s.size)
++            return s.cur;
++        s.time = fa.ftLastWriteTime;
++        s.size = fa.nFileSizeLow;
++        if (FILE* f = fopen(p.c_str(), "rb"))
++        {
++            char buf[1024];
++            size_t n;
++            while ((n = fread(buf, 1, sizeof(buf), f)) > 0 && text.size() < 8192)
++                text.append(buf, n);
++            fclose(f);
++        }
++    }
++    else
++        s.size = 0xffffffffu;
++    if (text == s.text)
++        return s.cur;
++    s.text = text;
++    s.cur = Parse(text);
++    ApplyRatio(s.cur);
++    LOG_INFO("Vela live ({0}): model {1} ratio {2} amax {3} alphak {4} mk {5} fresh {6} sq {7} ncap {8} disocc {9}",
++             text.empty() ? "no file, launch settings" : p, ModelName(s.cur.model), s.cur.ratio, s.cur.amax,
++             s.cur.alphaK, s.cur.mk, s.cur.fresh, s.cur.sq, s.cur.ncap, s.cur.disocc);
++    return s.cur;
++}
++
++// The render size the game draws now (its DLSS subrect), set by the evaluate that re-creates SGSR 3 for it and taken
++// by that SGSR 3's Init: OptiScaler re-creates a feature from its creation parameters, which keep the old size.
++inline unsigned int SubW = 0, SubH = 0;
++
++// While the FFX backend makes its context with FSR 4 INT8 forced on a GPU that is not AMD, the DXGI adapter reads as an
++// RDNA3 card (Dxgi_Spoofing.cpp): the FSR 4.1 SDK upscaler gives its INT8 model to AMD only and falls back to FSR 3.1
++inline bool AmdForFfx = false;
++
++// The values as last read (per-frame constants; the NVNGX evaluate path polls).
++inline const Values& Cur() { return St().cur; }
++} // namespace VelaLive
