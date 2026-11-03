@@ -113,7 +113,9 @@ assert sgsr3.launch_on("x %command% -dx12", "v1f", True) == ('WINEDLLOVERRIDES="
 assert sgsr3.launch_on("WINEDLLOVERRIDES=dxgi=n,b x %command%", "v1f", False)[0] == "WINEDLLOVERRIDES=dxgi=n,b x %command%"
 assert sgsr3.launch_off(on, "orig %command%", on, True) == "orig %command%"
 assert sgsr3.launch_off(on + " -foo", "orig %command%", on, True) == "/usr/libexec/armada/armada-game-launch %command% -foo"
-assert sgsr3.launch_off('WINEDLLOVERRIDES="dxgi=n,b" %command%', "", "x", False) == ""
+# 0.8.17: what Vela wrote decides what is Vela's (here its override, its -dx12 and the %command% "" had not)
+assert sgsr3.launch_off('WINEDLLOVERRIDES="dxgi=n,b" %command%', "", 'WINEDLLOVERRIDES="dxgi=n,b" %command% -dx12', True) == ""
+assert sgsr3.launch_off('WINEDLLOVERRIDES="dxgi=n,b" %command%', "", "x", False) == 'WINEDLLOVERRIDES="dxgi=n,b" %command%'
 assert sgsr3.launch_off("x %command% -dx12", "x %command% -dx12", "y", False) == "x %command% -dx12"
 
 # ---- ini

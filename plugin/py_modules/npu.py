@@ -21,6 +21,8 @@ import re
 import subprocess
 import time
 
+import launchopts
+
 LAYER_NAME = "VK_LAYER_VELA_npu"
 LIB = "libVkLayer_VELA_npu.so"
 MANIFEST = "VkLayer_VELA_npu.json"
@@ -298,19 +300,26 @@ class Npu:
         tokens = self.tokens(appid)
         if st.get("on") and launch_options is not None and launch_options == st.get("launch_set"):
             return launch_options
+        # 0.8.17: the layer's own tokens in front, exactly those out again (launchopts); the player's stay as they are
         if st.get("on"):
-            base = self.strip(launch_options, st.get("tokens"))  # options changed since: ours again, theirs kept
+            new, rec = launchopts.replace(launch_options or "", self.record(st), tokens)  # changed since: ours again
         else:
             st = {"on": True, "launch_prev": launch_options, "installed_at": time.time()}
-            base = self.strip(launch_options, tokens)
-        if "%command%" not in base:
-            base = f"%command% {base}".strip()
-        new = " ".join(tokens + [base])
-        st.update({"tokens": tokens, "launch_set": new, "updated_at": time.time()})
+            new, rec = launchopts.add(launch_options or "", tokens)
+        st.update({"tokens": tokens, "launch_set": new, "added": rec, "updated_at": time.time()})
         self._write(appid, st)
         self.sync_manifest()
         self.log(f"npu: {appid} on, launch: {new}")
         return new
+
+    @staticmethod
+    def record(st):
+        """What the layer added to the launch options (0.8.17 states keep it; older ones: its tokens it put in)."""
+        st = st or {}
+        if isinstance(st.get("added"), dict):
+            return {**launchopts.empty_record(), **st["added"]}
+        mine = set(st.get("tokens") or ())
+        return launchopts.derive(st.get("launch_prev"), st.get("launch_set"), lambda t: t in mine)
 
     def rewrite_state(self, appid, fn):
         """0.8.15: the options the state remembers (launch_prev, launch_set) through fn, so the exact restore and the
@@ -335,9 +344,7 @@ class Npu:
         if launch_options is None or launch_options == st.get("launch_set"):
             restored = st.get("launch_prev") or ""
         else:
-            restored = self.strip(launch_options, st.get("tokens"))
-            if restored == "%command%" and not (st.get("launch_prev") or "").strip():
-                restored = ""
+            restored = launchopts.remove(launch_options, self.record(st))  # 0.8.17: only the layer's own tokens
         try:
             os.remove(self._state_path(appid))
         except OSError:

@@ -67,7 +67,7 @@ Other games with DLSS, FSR 2/3 or XeSS should work too. Tell us how it goes: [Re
 
 **1. The plugin**
 
-1. Download `vela-0.8.16.zip` from the [latest release](../../releases/latest).
+1. Download the `vela-<version>.zip` from the [latest release](../../releases/latest).
 2. In Decky: gear icon → **Developer** (developer mode on) → **Install Plugin from ZIP File** → pick the zip.
 3. Vela appears in the Quick Access menu.
 

@@ -37,7 +37,7 @@ type Pending = { key: string; appid: string; why: string[] };
 type ReportPanel = { configured: boolean; rate_left: number; auto_prompt: boolean; pending: Pending | null };
 type Preview = { id: string; files: { name: string; bytes: number }[]; zip_bytes: number; status: string;
   report_id: string | null; configured: boolean; rate_left: number; path: string; why: string[] };
-type Switched = { launch_options: string; resolution?: string | null };
+type Switched = { launch_options: string | null; resolution?: string | null };
 
 function wrap<A extends any[], T>(name: string) {
   const fn = callable<A, Res<T>>(name);
@@ -76,11 +76,15 @@ function launchOptions(appid: string): Promise<string | null> {
       resolve(v);
     };
     try {
-      reg = SteamClient.Apps.RegisterForAppDetails(Number(appid), (d: any) => finish(d?.strLaunchOptions ?? ""));
+      // 0.8.17: only real details count (a callback without strLaunchOptions is not "no options": 0.8.16 took it for "" and
+      // the backend wrote its own options over the player's); a slow Steam gets 10 s, then null = not read, nothing changes
+      reg = SteamClient.Apps.RegisterForAppDetails(Number(appid), (d: any) => {
+        if (typeof d?.strLaunchOptions === "string") finish(d.strLaunchOptions);
+      });
     } catch {
       finish(null);
     }
-    setTimeout(() => finish(null), 3000);
+    setTimeout(() => finish(null), 10000);
   });
 }
 function runningApp(): { appid: string; name: string } | null {
@@ -347,7 +351,7 @@ function Content() {
   const pick = (m: ModelId | "off") => run(async () => {
     const launch = await launchOptions(game.appid);
     const r = await api.applyModel(game.appid, m, launch, res);
-    if (r.launch_options !== launch) await setLaunch(r.launch_options);
+    if (typeof r.launch_options === "string" && r.launch_options !== launch) await setLaunch(r.launch_options);
     await setOverride(r.resolution);
   });
 

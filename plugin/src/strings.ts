@@ -8,10 +8,10 @@ import en from "./i18n/en.json";
 
 export const NAME = "Vela";
 // = package.json "version" (build_zip.py refuses a zip where they differ)
-export const VERSION = "0.8.16";
+export const VERSION = "0.8.18";
 // the public installer of the Vela NPU system part (REL/repo/npu, release asset of the same tag); zrprod9-cmyk = the GitHub
 // account, set by tools/set_release_repo.py before the public build
-export const NPU_INSTALL_CMD = "curl -fsSL https://github.com/zrprod9-cmyk/vela/releases/download/v0.8.16/install-vela-npu.sh | sudo sh";
+export const NPU_INSTALL_CMD = "curl -fsSL https://github.com/zrprod9-cmyk/vela/releases/latest/download/install-vela-npu.sh | sudo sh";
 
 export type Key = keyof typeof en;
 // one text: {name} placeholders filled from p

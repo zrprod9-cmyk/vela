@@ -19,6 +19,7 @@ import re
 import time
 
 import gameutil
+import launchopts
 
 LAYER_NAME = "VK_LAYER_UPSCALE_any"
 ENABLE_ENV = "UPSCALE_ANY=1"
@@ -179,9 +180,10 @@ class AnyGame:
         if cur is None or cur == st.get("launch_set"):
             restored = st.get("launch_prev") or ""
         else:
-            restored = self.strip(cur, st.get("tokens"))
-            if restored == "%command%" and not (st.get("launch_prev") or "").strip():
-                restored = ""
+            # 0.8.17: only the layer's own tokens go (launchopts), the player's stay as they are
+            mine = set(st.get("tokens") or ())
+            restored = launchopts.remove(cur, launchopts.derive(st.get("launch_prev"), st.get("launch_set"),
+                                                                lambda t: t in mine))
         st["on"] = False
         self._write(appid, st)
         if st.get("unity_saved") is not None and not running                 and not gameutil.prefix_busy(gameutil.prefix_dir(self.home, appid)):

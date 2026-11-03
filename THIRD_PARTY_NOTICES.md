@@ -1,4 +1,4 @@
-# Third-party notices: Vela 0.8.16 (`vela-0.8.16.zip`, md5 11d684e137ea0e0f4d8777ffe5731253)
+# Third-party notices: Vela 0.8.18 (`vela-0.8.18.zip`, md5 6bf61d665bde0bad7434cee4d2db677b)
 
 Every file in the release zip, who wrote it and under which licence. Licence texts are inside the zip in
 `upscale/assets/licenses/` (paths below are zip paths). "Ours" = written by the Vela developer.

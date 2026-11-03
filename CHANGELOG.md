@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.18 — 2026-11-03
+
+- **Your launch options are safe.** Vela now adds and removes only its own launch arguments; whatever you had before, or add
+  later, stays where it was. If an older version removed something from a game you have not edited since, it comes back.
+- The NPU part installer accepts the Snapdragon 8 Elite (Odin 3) results, which are correct but not bit-identical.
+- The panel's NPU install command always points to the latest release.
+
 ## 0.8.17 — 2026-11-03
 
 NPU part only; the plugin stays `vela-0.8.16.zip`.

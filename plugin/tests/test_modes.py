@@ -209,7 +209,8 @@ assert open(regp).read() == reg and not os.path.exists(os.path.join(settings, "a
 r = ag.enable("553420", {"render": "game"}, "", "1280x720", scu)
 assert r["resolution"] is None and r["launch_options"].endswith("%command%")
 off = ag.disable("553420", r["launch_options"] + " -nosplash", scu)
-assert off["launch_options"] == "%command% -nosplash" and off["resolution"] == "1280x720", off
+# 0.8.17: the options had no %command% before (""): the one the layer put in goes with its tokens (same command line)
+assert off["launch_options"] == "-nosplash" and off["resolution"] == "1280x720", off
 assert open(regp).read() == reg
 # compare: linear for a moment
 r = ag.enable("553420", {}, launch0, "Default", scu)

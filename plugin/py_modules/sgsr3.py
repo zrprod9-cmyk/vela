@@ -29,6 +29,7 @@ import re
 import shutil
 import time
 
+import launchopts
 import npu
 import presets
 import profiles
@@ -159,10 +160,11 @@ def static_env(cfg, ratio=None):
 
 
 def drop_legacy_env(options):
-    """Launch options (or None) without VELA_FSR2_ALGO=...; everything else exactly as it was."""
+    """Launch options (or None) without VELA_FSR2_ALGO=...; everything else exactly as it was (0.8.17: the spacing too)."""
     if not options or not LEGACY_ENV.search(options):
         return options
-    return re.sub(r"\s+", " ", LEGACY_ENV.sub(" ", options)).strip()
+    old = [t for t in launchopts.words(options) if LEGACY_ENV.fullmatch(t)]
+    return launchopts.remove(options, {"env": old}) if old else options
 
 
 _RX_VAMAX = re.compile(r"(?:^|\s)(?:VELA|OPTI_SGSR3)_AMAX=([0-9.]+)")
@@ -271,6 +273,8 @@ FG_TU_ENV = "TU_AUTOTUNE_FLAGS=preempt_optimize"  # no longer set (not supported
 ALGO_ENV = {"v1f": None, "v1": V1_ENV, "student": STUDENT_ENV}
 OUR_TOKENS = (DLL_OVERRIDE, STUDENT_ENV, V1_ENV, FG_ENV, FG_TU_ENV) + profiles.ENV_TOKENS + profiles.EXTRA_ENV_TOKENS
 DX12_ARG = "-dx12"
+# 0.8.17: the panel could not read Steam's launch options: nothing is set up or undone on a guess
+NOT_READ = "Steam did not give this game's launch options, nothing was changed: try again"
 # 0.8.15: Bright Memory: Infinite (1178830): a game's own Steam launch entries (appinfo: config/launch/<n>/
 # arguments) may pass their own API flag ("StartGame（DX11）" = -dx11, another = -dx12); our -dx12 on top of the DX11 entry made UE
 # exit with "-d3d12, -d3d11, -vulkan, and -opengl are mutually exclusive". Such a game gets no -dx12 from Vela: the player picks
@@ -334,8 +338,8 @@ def has_api_flag(options):
 
 
 def drop_api_flags(options):
-    """Options without a standalone -dx12 / -d3d12 / -dx11 / -d3d11 (for a game whose own Steam launch entries pass the API:
-    any flag of ours collides with one of the entries). None stays None."""
+    """Options without a standalone -dx12 / -d3d12 / -dx11 / -d3d11. None stays None. 0.8.17: no longer used on Steam's
+    options (it took the player's own flag too); Vela takes out only the -dx12 it added (launchopts record)."""
     if not isinstance(options, str):
         return options
     return re.sub(r"\s+", " ", _RX_API_TOKEN.sub(" ", options)).strip()
@@ -646,7 +650,9 @@ def smooth_env(level):
 
 
 def strip_ours(options, dx12_ours=False):
-    """Launch options without the tokens this module adds."""
+    """Launch options without every token that looks like this module's (0.8.16 and older cleaned Steam's options with it,
+    and took the player's own VKD3D_* / WINEDLLOVERRIDES="dxgi=n,b" / OPTI_SGSR3_* too). 0.8.17: not used on Steam's options;
+    ours_token is the same test for one token, for setups made before the record of what Vela added (launchopts.derive)."""
     out = options or ""
     for tok in OUR_TOKENS:
         out = re.sub(rf"(?<!\S){re.escape(tok)}(?!\S)", " ", out)
@@ -658,37 +664,57 @@ def strip_ours(options, dx12_ours=False):
     return re.sub(r"\s+", " ", out).strip()
 
 
-def launch_on(options, algo, unreal, dx12_ours=False, fg=False, extra_env=(), own_api=False):
-    """Launch options with SGSR 3: (new options, whether -dx12 was added by us). extra_env: the game profile's. own_api: the
-    game's Steam launch entries pass their own API flag (appinfo_api_args): no API flag in the options at all, ours or an
-    earlier one (0.8.15: -dx12 on top of the DX11 entry's -dx11 is a fatal UE error; the player picks the DX12 entry)."""
-    base = strip_ours(options, dx12_ours)
-    if own_api:
-        base = drop_api_flags(base)
-    if "%command%" not in base:
-        # without %command% Steam appends the options to the game's command line
-        base = f"%command% {base}".strip()
-    has_dx = re.search(r"(?<!\S)-(dx12|d3d12|dx11|d3d11)(?!\S)", base, re.I)
-    add_dx = unreal and not has_dx and not own_api
-    if add_dx:
-        base += f" {DX12_ARG}"
-    env = [] if "WINEDLLOVERRIDES=" in base else [DLL_OVERRIDE]
+_RX_OURS = re.compile(r"(?:OPTI_SGSR3?_[A-Z0-9_]+|VELA_[A-Z0-9_]+|RECON_LEVEL)=\S*")
+
+
+def ours_token(tok):
+    """Whether a token looks like one this module adds (the test strip_ours applies): only for setups made before 0.8.17,
+    together with the options before Vela (launchopts.derive)."""
+    return tok in OUR_TOKENS or bool(_RX_OURS.fullmatch(tok))
+
+
+def legacy_record(before, set_by_us, dx12_added):
+    """What a setup made before 0.8.17 added (its state has no record): Vela's tokens of the options it wrote that the
+    options before it did not have; its -dx12 when the state says so."""
+    return launchopts.derive(before, set_by_us, ours_token, [DX12_ARG] if dx12_added else [])
+
+
+def launch_build(options, record, algo, unreal, fg=False, extra_env=(), own_api=False):
+    """0.8.17: Steam's options with SGSR 3: (new options, the record of what Vela added). record: what Vela added before
+    (taken out first, exactly); every other token stays as it is, where it is. extra_env: the game profile's. A variable
+    the player sets himself (same NAME=) is not added: his value wins (WINEDLLOVERRIDES as before). -dx12 only for Unreal
+    when the player's options pass no API flag, and never when the game's Steam launch entries pass their own (own_api,
+    appinfo_api_args; 0.8.15: -dx12 on top of the DX11 entry's -dx11 is a fatal UE error); the player's own flag is his."""
+    base = launchopts.remove(options or "", record)
+    add_dx = unreal and not own_api and not _RX_API_TOKEN.search(base)
+    env = [DLL_OVERRIDE]
     if ALGO_ENV.get(algo):
         env.append(ALGO_ENV[algo])
     if fg:
         env += [FG_ENV]  # (0.4.11-0.4.15 added FG_TU_ENV: A740 supports no preempt_optimize, "supported flags: 0x6")
     env += list(extra_env)
-    return " ".join(env + [base]), bool(add_dx)
+    return launchopts.replace(options or "", record, env, [DX12_ARG] if add_dx else [])
 
 
-def launch_off(current, before, set_by_us, dx12_ours):
-    """Launch options after disabling: exactly what was there if nobody touched them since, else ours removed."""
-    if current is None or current == set_by_us:
-        return before or ""
-    out = strip_ours(current, dx12_ours)
-    if out == "%command%" and not (before or "").strip():
-        return ""
-    return out
+def launch_on(options, algo, unreal, dx12_ours=False, fg=False, extra_env=(), own_api=False):
+    """launch_build for options this module wrote itself with no record of them (tests, old callers): every token that
+    looks like ours counts as ours, -dx12 when dx12_ours. Returns (new options, whether -dx12 was added by us)."""
+    rec = launchopts.derive(None, options or "", ours_token, [DX12_ARG] if dx12_ours else [])
+    new, rec = launch_build(options, rec, algo, unreal, fg, extra_env, own_api)
+    return new, DX12_ARG in rec["args"]
+
+
+def launch_off(current, before, set_by_us, dx12_ours, record=None):
+    """Launch options after disabling: exactly what was there before Vela if nobody touched them since, else the options
+    as they are now without exactly the tokens Vela added (record; None: legacy_record). The player's tokens, the ones
+    from before and his later edits, stay where they are. current None (Steam's options not read): None, write nothing."""
+    if current is None:
+        return None
+    if current == set_by_us and isinstance(before, str):
+        return before
+    if record is None:
+        record = legacy_record(before, set_by_us, dx12_ours)
+    return launchopts.remove(current, record)
 
 
 # ---- OptiScaler.log -------------------------------------------------------------------------------------------
@@ -951,23 +977,59 @@ class Sgsr3:
         """0.8.15: the API flags of the game's own Steam launch entries (appinfo_api_args)."""
         return appinfo_api_args(self.home, appid)
 
+    @staticmethod
+    def record(st):
+        """What Vela added to the game's launch options (0.8.17 states keep it; older ones: legacy_record)."""
+        if isinstance((st or {}).get("added"), dict):
+            return {**launchopts.empty_record(), **st["added"]}
+        st = st or {}
+        return legacy_record(st.get("launch_prev"), st.get("launch_set"), st.get("dx12_added", False))
+
+    def launch_legacy(self, appid):
+        """0.8.17: the game was set up by an older Vela (no record of what it added): the panel's launch_fix migrates it."""
+        d = self.scan(appid)["exe_dir"]
+        st = self.read_state(d) if d else None
+        return bool(st) and not isinstance(st.get("added"), dict)
+
+    def migrate_launch(self, appid, launch):
+        """0.8.17: a setup made before 0.8.17 gets its record. When Steam's options are still the ones Vela wrote, they are
+        rebuilt from the player's options before Vela with the same tokens of Vela's: what 0.8.16 and older took out of
+        them (VKD3D_FEATURE_LEVEL=12_2, VKD3D_SHADER_MODEL=6_6, the player's -dx12 ...) comes back. Options the player edited
+        since are kept as they are. launch: Steam's options without the NPU layer's tokens. Returns the options to set."""
+        d = self.scan(appid)["exe_dir"]
+        st = self.read_state(d) if d else None
+        if not st or isinstance(st.get("added"), dict):
+            return launch
+        rec = self.record(st)
+        prev, mine = st.get("launch_prev"), st.get("launch_set")
+        if launch is not None and launch == mine and isinstance(prev, str):
+            new, rec = launchopts.add(prev, rec["env"], rec["args"])
+            st["launch_set"] = launch = new
+            st["dx12_added"] = DX12_ARG in rec["args"]
+        st["added"] = rec
+        self._write_state(d, st)
+        self.log(f"sgsr3: {appid}: launch options of an older Vela: Vela's own tokens {rec}, launch: {launch}")
+        return launch
+
     def dx12_fix_pending(self, appid):
-        """0.8.15: the options Vela recorded for a game whose Steam launch entries pass their own API flag still carry an
-        API flag (a -dx12 Vela added, or one kept from the options before Vela: Bright Memory: Infinite)."""
+        """0.8.15: a -dx12 Vela added is still in the options of a game whose Steam launch entries pass their own API flag.
+        0.8.17: only Vela's own -dx12 (the record); a flag the player had (Bright Memory's -dx12 / -dx11) is his."""
         d = self.scan(appid)["exe_dir"]
         st = self.read_state(d) if d else None
         if not st or st.get("kind", "optiscaler") != "optiscaler":
             return False
-        return (bool(st.get("dx12_added")) or has_api_flag(st.get("launch_set"))) and bool(self.api_args(appid))
+        return DX12_ARG in self.record(st)["args"] and bool(self.api_args(appid))
 
     def drop_our_dx12(self, appid):
-        """dx12_fix_pending: the state's dx12_added off and its recorded options without the API flag. True: done."""
+        """dx12_fix_pending: Vela's -dx12 out of the record and of the recorded options. True: done."""
         if not self.dx12_fix_pending(appid):
             return False
         d = self.scan(appid)["exe_dir"]
         st = self.read_state(d)
-        st["dx12_added"] = False
-        st["launch_set"] = drop_api_flags(st.get("launch_set"))
+        rec = self.record(st)
+        rec["args"] = [a for a in rec["args"] if a != DX12_ARG]
+        st["launch_set"] = launchopts.remove(st.get("launch_set"), {"args": [DX12_ARG]})
+        st["added"], st["dx12_added"] = rec, False
         self._write_state(d, st)
         self.log(f"sgsr3: {appid}: API flag out of the launch options (the game's Steam launch entries pass "
                  f"{sorted(self.api_args(appid))})")
@@ -983,6 +1045,10 @@ class Sgsr3:
         if new == st["launch_set"]:
             return False
         st["launch_set"] = new
+        if isinstance(st.get("added"), dict):  # a token fn took out is not Vela's to take out again
+            left = launchopts.words(new)
+            st["added"] = {**st["added"], "env": [t for t in st["added"].get("env", []) if t in left],
+                           "args": [t for t in st["added"].get("args", []) if t in left]}
         self._write_state(d, st)
         return True
 
@@ -1214,6 +1280,9 @@ class Sgsr3:
                     raise RuntimeError(f"plugin file assets/sgsr3/{asset} is missing")
         d = sc["exe_dir"]
         st = self.read_state(d)
+        if st is None and launch_options is None:
+            # 0.8.17: never set up a game on options Vela could not read (0.8.16 wrote its own over the player's)
+            raise RuntimeError(NOT_READ)
         clean = resolve_mode(self.clean_opts(opts, {**profiles.defaults(appid), **self.migrate((st or {}).get("opts"))}),
                              appid)
         if kit["static"]:  # the game's FSR 2 sets the render size; Vela AI / SR as the profile says, no FG / smoothing
@@ -1225,19 +1294,24 @@ class Sgsr3:
             st = self._backup(d, launch_options, resolution, kit)
         else:
             self._backup_missing(d, st, kit)
-        dx12_ours = st.get("dx12_added", False)
-        base_launch = launch_options if launch_options is not None else st.get("launch_set")
-        if kit["static"]:
-            new_launch, dx12_added = launch_on(base_launch, "v1f", False, dx12_ours, False,
-                                               static_env(kit["static"], self.static_ratio(appid, d)))
+        rec = self.record(st)
+        if launch_options is None:
+            # Steam's options not read (the LL / FG cleanup at plugin start): the files change, the launch options and
+            # the record stay; the panel sends Steam's options later (llfg_pending) and they get the same exact edit
+            new_launch, dx12_added = st.get("launch_set"), st.get("dx12_added", False)
+        elif kit["static"]:
+            new_launch, rec = launch_build(launch_options, rec, "v1f", False, False,
+                                           static_env(kit["static"], self.static_ratio(appid, d)))
         else:
             # "game" ratio: the fork takes amax from the real sizes itself
             amax = [f"OPTI_SGSR3_AMAX={amax_str(clean['ratio'])}"] \
                 if AMAX_BY_RATIO and clean["algo"] == "student" and clean["ratio"] != "game" else []
-            new_launch, dx12_added = launch_on(base_launch, clean["algo"], sc["engine"] == "Unreal", dx12_ours,
-                                               clean["fg"], profiles.env_tokens(appid) + amax +
-                                               (smooth_env(clean["smooth"]) if clean["algo"] == "v1f" else []),
-                                               bool(self.api_args(appid)))
+            new_launch, rec = launch_build(launch_options, rec, clean["algo"], sc["engine"] == "Unreal", clean["fg"],
+                                           profiles.env_tokens(appid) + amax +
+                                           (smooth_env(clean["smooth"]) if clean["algo"] == "v1f" else []),
+                                           bool(self.api_args(appid)))
+        if launch_options is not None:
+            dx12_added = DX12_ARG in rec["args"]
         ini = None
         if not kit["static"]:
             with open(os.path.join(self.assets, "OptiScaler.ini"), encoding="utf-8", newline="") as f:
@@ -1262,10 +1336,10 @@ class Sgsr3:
             st["dxgi_md5"] = self._md5(kit["src"]["dxgi.dll"])  # 0.8.11: ours, to tell an older build from a foreign file
         st.update({"opts": clean, "version": "static-fsr2" if kit["static"] else self.version.get("dll", ""),
                    "launch_set": new_launch, "kind": "static_fsr2" if kit["static"] else "optiscaler",
-                   "dx12_added": dx12_added, "updated_at": time.time()})
+                   "dx12_added": dx12_added, "added": rec, "updated_at": time.time()})
         self._write_state(d, st)
-        self.log(f"sgsr3: {appid} on in {d}: {clean}, launch: {new_launch}")
-        return {"launch_options": new_launch, "status": self.status(appid)}
+        self.log(f"sgsr3: {appid} on in {d}: {clean}, launch: {new_launch}, Vela's tokens: {rec}")
+        return {"launch_options": new_launch if launch_options is not None else None, "status": self.status(appid)}
 
     def set_ini(self, appid, opts):
         """Rewrite only OptiScaler.ini (low latency / frame-rate limit changed): no launch option change."""
@@ -1342,7 +1416,8 @@ class Sgsr3:
                 os.rmdir(os.path.join(d, *rel.split("/")))
             except OSError:
                 pass  # not empty: something else was put there, leave it
-        restored = launch_off(launch_options, st.get("launch_prev"), st.get("launch_set"), st.get("dx12_added", False))
+        restored = launch_off(launch_options, st.get("launch_prev"), st.get("launch_set"), st.get("dx12_added", False),
+                              self.record(st))
         # 0.8.15: only the files Vela put in are checked; a runtime file (OptiScaler.log) is written by a running game
         # (Bright Memory 00:15:41: the check failed on it after every file was restored, and Vela stayed on half-undone)
         runtime = set(kit["runtime"]) | set(RUNTIME) | set(STATIC_RUNTIME)

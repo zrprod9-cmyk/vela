@@ -12,7 +12,8 @@ import gamecfg  # noqa: E402
 import gamecheck  # noqa: E402
 import gpufloor  # noqa: E402
 import profiles  # noqa: E402
-import gameutil  # noqa: E402
+import gameutil
+import launchopts  # noqa: E402
 import latency  # noqa: E402
 import live  # noqa: E402
 import npu  # noqa: E402
@@ -405,14 +406,24 @@ class Plugin:
         (whenever the layer is in the plugin and the system component is installed; a console without them gets none) and no
         VELA_FSR2_ALGO (0.8.13 / 0.8.14 wrote =ai after Vela AI had left). The states of sgsr3 / npu forget the token too,
         so the undo (exact restore) still matches. Returns the options to set (None stays None)."""
+        launch = launch_options
+        if launch is not None and self.s3.launch_legacy(appid):
+            # 0.8.17: a setup of an older Vela gets the record of Vela's own tokens; options it never edited since get
+            # back what the older Vela took out of the player's (sgsr3.migrate_launch). The layer's tokens first out
+            # (exact), in again below
+            if (self.npu.read(appid) or {}).get("on"):
+                launch = self.npu.disable(appid, launch)
+            launch = self.s3.migrate_launch(appid, launch)
         self.npu.rewrite_state(appid, sgsr3.drop_legacy_env)
         self.s3.rewrite_launch_set(appid, sgsr3.drop_legacy_env)
-        launch = sgsr3.drop_legacy_env(launch_options)
-        # 0.8.15: a game whose Steam launch entries pass their own API flag gets none in its options (UE: "-d3d12,
-        # -d3d11 ... mutually exclusive" when our -dx12 meets the DX11 entry's -dx11); the npu state remembers them too
+        launch = sgsr3.drop_legacy_env(launch)
+        # 0.8.15: a game whose Steam launch entries pass their own API flag gets no -dx12 from Vela (UE: "-d3d12, -d3d11
+        # ... mutually exclusive" when our -dx12 meets the DX11 entry's -dx11); the npu state remembers it too. 0.8.17:
+        # only the -dx12 Vela added goes, a flag the player has is his
         if self.s3.drop_our_dx12(appid):
-            launch = sgsr3.drop_api_flags(launch)
-            self.npu.rewrite_state(appid, sgsr3.drop_api_flags)
+            ours = {"args": [sgsr3.DX12_ARG]}
+            launch = launchopts.remove(launch, ours)
+            self.npu.rewrite_state(appid, lambda t: launchopts.remove(t, ours))
         if self.npu.ready():
             return self.npu.enable(appid, launch)
         return self.npu.disable(appid, launch)
@@ -422,6 +433,8 @@ class Plugin:
         shows the game): the layer's tokens are not in, or VELA_FSR2_ALGO is in what Vela recorded."""
         if not s3.get("installed"):
             return False
+        if self.s3.launch_legacy(appid):
+            return True  # 0.8.17: set up by an older Vela, no record of its own tokens yet
         st = self.npu.read(appid) or {}
         if self.npu.ready() and not st.get("on"):
             return True
@@ -445,6 +458,10 @@ class Plugin:
         the launch options. FSR 4 gets the NPU when it is ready (picking it again keeps the choice);
         FSR 3 / SGSR 2 keep the layer's tokens (0.8.15: the live key alone turns the NPU off). Returns the launch options for the frontend to set and Steam's override (None =
         leave it)."""
+        if launch_options is None:
+            # 0.8.17: the panel could not read Steam's options (null): nothing is set up, switched or undone on a guess
+            # (0.8.16 then wrote its own options over the player's, and Off put back "")
+            raise RuntimeError(sgsr3.NOT_READ)
         scan = self.s3.scan(appid, fresh=True)
         s3 = self.s3.status(appid)
         ag = self.ag.status(appid, scan, appid in gameutil.running_appids())
@@ -506,7 +523,8 @@ class Plugin:
             raise RuntimeError("the layer upscale is on for this game: switch it off first")
         want = self.lat.wanted(appid)
         # the NPU layer's tokens sit on top of SGSR 3's: off before, on again after, so each restores exactly
-        npu_on = bool((self.npu.read(appid) or {}).get("on"))
+        # (0.8.17: Steam's options not read: neither changes them, sgsr3 keeps its record)
+        npu_on = bool((self.npu.read(appid) or {}).get("on")) and launch_options is not None
         if npu_on:
             launch_options = self.npu.disable(appid, launch_options)
         res = self.s3.enable(appid, {**(opts or {}), "latency": want["on"], "fps": want["fps"]}, launch_options,

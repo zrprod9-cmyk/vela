@@ -246,8 +246,10 @@ BMI = "WINEDLLOVERRIDES=dxgi=n,b OPTI_SGSR3_STUDENT=1 OPTI_SGSR3_LINES=2 /usr/li
 fixed = P._launch_fix(A, r["launch_options"])["launch_options"]
 assert not sgsr3.has_api_flag(fixed) and "VELA_NPU=1" in fixed and fixed.endswith("%command%"), fixed
 assert not P.s3.dx12_fix_pending(A) and not P._game_state(A, "Default")["launch_fix"]
-new, added = sgsr3.launch_on(BMI, "student", True, False, own_api=True)
+# 0.8.17: the -dx12 goes only as Vela's own (dx12_ours); the player's own flag stays (tests/test_launch_user.py)
+new, added = sgsr3.launch_on(BMI, "student", True, True, own_api=True)
 assert not added and not sgsr3.has_api_flag(new), new
+assert sgsr3.launch_on(BMI, "student", True, False, own_api=True)[0].endswith("%command% -dx12")
 for entry in ("BrightMemoryInfinite.exe -dx11", "BrightMemoryInfinite.exe -dx12"):  # what Steam runs for each entry
     line = new.replace("%command%", entry)
     assert len(re.findall(r"(?<!\S)-(?:dx1[12]|d3d1[12])(?!\S)", line)) == 1, line  # one API flag: no UE fatal error

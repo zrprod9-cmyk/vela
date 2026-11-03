@@ -67,8 +67,8 @@ en_json = open(os.path.join(ROOT, "src", "i18n", "en.json"), encoding="utf-8").r
 assert '"reason.godot": "a Godot game: its FSR 2 is built into the engine' in en_json
 strings = open(os.path.join(ROOT, "src", "strings.ts"), encoding="utf-8").read()
 pkg = json.load(open(os.path.join(ROOT, "package.json"), encoding="utf-8"))
-assert pkg["version"] == "0.8.16", pkg["version"]
-assert 'export const VERSION = "0.8.16";' in strings
+assert pkg["version"] == "0.8.18", pkg["version"]
+assert 'export const VERSION = "0.8.18";' in strings
 dist = os.path.join(ROOT, "dist", "index.js")
 if os.path.isfile(dist):  # built: the bundle carries the Godot text
     assert "a Godot game: its FSR 2" in open(dist, encoding="utf-8").read()

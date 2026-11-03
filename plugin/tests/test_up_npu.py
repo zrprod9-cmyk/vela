@@ -28,7 +28,7 @@ assert hint("3", dict(v9, up_running={"1920x1080": False})) == "npu_service"  # 
 with open(os.path.join(os.path.dirname(__file__), "..", "src", "strings.ts"), encoding="utf-8") as fh:
     ts = fh.read()
 # the public installer (release asset), never a path that exists only on the developers' console
-assert "releases/download/v0.8.16/install-vela-npu.sh | sudo sh" in ts and ("fsr4" + "bench") not in ts
+assert "releases/latest/download/install-vela-npu.sh | sudo sh" in ts and ("fsr4" + "bench") not in ts
 with open(os.path.join(os.path.dirname(__file__), "..", "src", "i18n", "en.json"), encoding="utf-8") as fh:
     ts += fh.read()
 assert "(package 12)" in ts
