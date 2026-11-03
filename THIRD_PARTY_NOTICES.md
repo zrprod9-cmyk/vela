@@ -32,17 +32,17 @@ Every file in the release zip, who wrote it and under which licence. Licence tex
 
 ## Not in the zip: the Vela NPU system part
 
-The NPU system extension `vela-npu-sysext-12.raw` (package 12, sha256
-`392ba27e276d985221d1d695b782628cffa68ae4165bcb2ec0e7676cfd49a52a`, its own release asset, installed as
+The NPU system extension `vela-npu-sysext-13.raw` (package 13, sha256
+`ac9672ba83e20d4e001261f6c22c7ba27f15d93fd9376c22b62bc4ba5e653deb`, its own release asset, installed as
 `armada-vela-npu.raw`) is **not** in the release zip. It contains:
 
 - `fsr4npud` (the NPU daemon) and `fsr4npu-check`: ours, GPL-3.0-or-later with a GPL-3.0 section 7 additional permission
   for the Qualcomm runtime (`LICENSING.md`);
-- the 7 FSR 4 graphs for HTP v73: the AMD FSR 4.1.1 network (AMD's MIT licence, notice below), compiled by us with
+- the 7 FSR 4 graphs for HTP v73 and the same 7 for HTP v79: the AMD FSR 4.1.1 network (AMD's MIT licence, notice below), compiled by us with
   Qualcomm's QAIRT tools;
 - the FastRPC client and DSP listener (`cdsprpcd`, `libcdsprpc`, `libcdsp_default_listener`): quic/fastrpc `a56e9d4`,
   built from source, BSD-3-Clause, text inside the image;
-- the systemd units, the udev rule and the modules-load file: ours;
+- the systemd units and drop-ins, the udev rule and the modules-load file: ours;
 - the Qualcomm AI Engine Direct (QNN) runtime, see the next section.
 
 Not in the image: `fastrpc_shell_unsigned_3` and the DSP-side `libc++.so.1` / `libc++abi.so.1`; `install-vela-npu.sh`
@@ -50,8 +50,9 @@ reads them from the device's own dsp partition.
 
 ## Qualcomm AI Engine Direct (QNN) runtime
 
-- **Included** (only inside `vela-npu-sysext-12.raw`, never as a separate download): `libQnnHtp.so`,
-  `libQnnHtpV73Stub.so`, `libQnnSystem.so`, `libQnnHtpV73Skel.so`, `libQairtHtpV73Skel.so`, `libQnnHtpV73.so` from the
+- **Included** (only inside `vela-npu-sysext-13.raw`, never as a separate download): `libQnnHtp.so`,
+  `libQnnHtpV73Stub.so`, `libQnnSystem.so`, `libQnnHtpV73Skel.so`, `libQairtHtpV73Skel.so`, `libQnnHtpV73.so`,
+  `libQnnHtpV79Stub.so`, `libQnnHtpV79Skel.so`, `libQairtHtpV79Skel.so`, `libQnnHtpV79.so` from the
   Qualcomm AI Engine Direct SDK (QAIRT) 2.47.0.260601, unmodified.
 - **Licence:** Qualcomm AI Stack License, shipped unchanged in the image as
   `/usr/share/licenses/armada-vela-npu/Qualcomm-AI-Stack-LICENSE.pdf`, with Qualcomm's third-party Notice File

@@ -1,31 +1,41 @@
 #!/bin/sh
-# Vela NPU system part, package 12: lets Vela run FSR 4 / FSR 4 Fast on the Hexagon NPU (Snapdragon 8 Gen 2, SM8550).
+# Vela NPU system part, package 13: lets Vela run FSR 4 / FSR 4 Fast on the Hexagon NPU (Snapdragon 8 Gen 2, SM8550;
+# Snapdragon 8 Elite, SM8750, experimental: not tested on a device yet).
 # Needs sudo ONCE (it adds a system extension, a udev rule and system services). Run in Desktop mode -> Konsole, game closed:
-#   curl -fsSL https://github.com/zrprod9-cmyk/vela/releases/download/v0.8.16/install-vela-npu.sh | sudo sh
+#   curl -fsSL https://github.com/zrprod9-cmyk/vela/releases/download/v0.8.17/install-vela-npu.sh | sudo sh
 # What it does:
-#   1. downloads vela-npu-sysext-12.raw (NPU daemon, 7 FSR 4 graphs, quic/fastrpc, and the Qualcomm AI Engine Direct (QNN)
-#      runtime 2.47.0.260601, unmodified) and checks its sha256;
+#   1. downloads vela-npu-sysext-13.raw (NPU daemon, 7 FSR 4 graphs for HTP v73 and for HTP v79, quic/fastrpc, and the
+#      Qualcomm AI Engine Direct (QNN) runtime 2.47.0.260601, unmodified) and checks its sha256;
 #   2. reads the DSP shell and C++ runtime (3 files) read-only from your device's own dsp partition;
 #   3. installs both as systemd system extensions in /var/lib/extensions (nothing in armadaOS is overwritten), enables the
 #      7 NPU daemons, and checks each one with a fixed input. Prints "Vela NPU: OK" or "Vela NPU: FAILED" + the reason.
-# Remove: uninstall-vela-npu.sh (same release). Options: --image <local vela-npu-sysext-12.raw>, --force.
+# Remove: uninstall-vela-npu.sh (same release). Options: --image <local vela-npu-sysext-13.raw>, --force.
 # The image carries the QNN runtime (no SDK download); library search paths: /usr/lib64/vela-npu only; root:root, umask 022.
 set -u
 umask 022
-VER=12
-TAG=v0.8.16
+VER=13
+TAG=v0.8.17
 BASE_URL="https://github.com/zrprod9-cmyk/vela/releases/download/$TAG"
 IMAGE=vela-npu-sysext-$VER.raw
-IMAGE_SHA256=392ba27e276d985221d1d695b782628cffa68ae4165bcb2ec0e7676cfd49a52a
+IMAGE_SHA256=ac9672ba83e20d4e001261f6c22c7ba27f15d93fd9376c22b62bc4ba5e653deb
 EXT=/var/lib/extensions
 QDIR=/var/lib/extensions/armada-vela-npu-qnn
 UNITS="vela-npu@nf4_exact.service vela-npu@nf4_k1h.service vela-npu@nf4_k1h_360.service vela-npu@nf4_k1h_450.service vela-npu@nf4up_k1h.service vela-npu@nf4up_k1h_450.service vela-npu@nf4up_k1h_360.service"
 # DSP files from the device's dsp partition (/cdsp/<name>): the hashes of the tested Retroid Pocket 6; another hash = a warning
+# (another device, e.g. an SM8750 one, has its own copies: they are used)
 DSP_FILES="cb2a0a8ed448bd6e0fea0a81bd0c3892b93373f3eff5c43ca577c7a0628d7251 fastrpc_shell_unsigned_3
 6050f67f1416a69a81d3b7f34fa4ccdca139d8c752a24698a7fd679bf418b90f libc++.so.1
 934f8039214f15b1a692a2278909a9468f1b5561affafbf60efb96e158583563 libc++abi.so.1"
-# fsr4npu-check output hash per daemon (fixed input) = the hash of the tested graphs
+# fsr4npu-check output hash per daemon (fixed input). SM8550: measured on the tested device (HTP v73 graphs).
 WANT="fsr4npud_nf4up_k1h 60a3d9ad466fca76
+fsr4npud_nf4up_k1h_450 90a028a11df7fc3e
+fsr4npud_nf4up_k1h_360 f27ed0e09ef0d7b8
+fsr4npud_nf4_k1h 8a735e657feee21f
+fsr4npud_nf4_k1h_450 2b9d68691c111dbe
+fsr4npud_nf4_k1h_360 2606832826ab4c91
+fsr4npud_nf4_exact a83aff6f6a4633e8"
+# SM8750: the HTP v79 graphs, from the x86 HTP simulator of the QNN SDK (it reproduces the 7 SM8550 hashes above)
+WANT_SM8750="fsr4npud_nf4up_k1h 60a3d9ad466fca76
 fsr4npud_nf4up_k1h_450 90a028a11df7fc3e
 fsr4npud_nf4up_k1h_360 f27ed0e09ef0d7b8
 fsr4npud_nf4_k1h 8a735e657feee21f
@@ -39,7 +49,7 @@ fail() { say ""; say "Vela NPU: FAILED - $*"; say "Vela keeps running FSR 4 on t
 LOCAL_IMAGE=""; FORCE=0
 while [ $# -gt 0 ]; do case "$1" in
   --qairt) say "(--qairt is not needed any more: the image carries the QNN runtime)"; shift 2;; --image) LOCAL_IMAGE=${2:-}; shift 2;; --force) FORCE=1; shift;;
-  -h|--help) sed -n 2,13p "$0" 2>/dev/null; exit 0;; *) fail "unknown option $1";; esac; done
+  -h|--help) sed -n 2,14p "$0" 2>/dev/null; exit 0;; *) fail "unknown option $1";; esac; done
 
 say "== Vela NPU package $VER installer"
 DRY=${VELA_NPU_DRY:-0}   # 1 = test of steps 1-3 only (no root, nothing installed; VELA_NPU_PART = a dsp image file)
@@ -47,8 +57,19 @@ DRY=${VELA_NPU_DRY:-0}   # 1 = test of steps 1-3 only (no root, nothing installe
 [ $DRY = 1 ] || [ "$(id -u)" = 0 ] || fail "run it with sudo (it asks for your password once)"
 [ "${ID:-}" = armada ] || fail "this is for armadaOS (found ID=${ID:-?})"
 [ $DRY = 1 ] || [ "$(uname -m)" = aarch64 ] || fail "this is for ARM64 devices"
-[ $DRY = 1 ] || tr '\0' '\n' < /proc/device-tree/compatible 2>/dev/null | grep -qx "qcom,sm8550" || \
-  fail "the NPU graphs are built for Snapdragon 8 Gen 2 (SM8550) only; on this chip Vela runs FSR 4 on the GPU"
+# the chip, from the kernel's device tree (VELA_NPU_COMPATIBLE: a stand-in file for the dry run)
+DT=/proc/device-tree/compatible; [ $DRY = 1 ] && DT=${VELA_NPU_COMPATIBLE:-}
+CHIP=""
+if [ -n "$DT" ]; then
+  compat=$(tr '\0' '\n' < "$DT" 2>/dev/null)
+  if echo "$compat" | grep -qx "qcom,sm8550"; then CHIP=SM8550
+  elif echo "$compat" | grep -qx "qcom,sm8750"; then CHIP=SM8750
+  else fail "the NPU graphs are built for Snapdragon 8 Gen 2 (SM8550) and Snapdragon 8 Elite (SM8750) only; on this chip Vela runs FSR 4 on the GPU"; fi
+fi
+case $CHIP in
+  SM8550) say "  chip: SM8550 (Snapdragon 8 Gen 2), HTP v73 graphs";;
+  SM8750) say "  chip: SM8750 (Odin 3): not tested on a device yet. HTP v79 graphs (/usr/lib64/vela-npu/v79)"; WANT=$WANT_SM8750;;
+esac
 if [ "${VERSION_ID:-}" != 44 ] && [ $FORCE = 0 ]; then
   fail "the image is made for armadaOS VERSION_ID=44, this system has ${VERSION_ID:-?} (systemd-sysext would not load it). --force tries anyway"
 fi
@@ -137,6 +158,7 @@ for u in $UNITS; do s=${u#vela-npu@}; s=fsr4npud_${s%.service}; w=$(echo "$WANT"
 done
 if [ $bad = 0 ]; then
   say ""; say "Vela NPU: OK - 7 of 7 NPU daemons work. Start your game again; the Vela panel shows \"on the NPU\"."
+  [ "$CHIP" = SM8750 ] && say "SM8750 (Odin 3) is experimental: please report how it runs."
   exit 0
 fi
 say ""; say "Vela NPU: FAILED - $bad of 7 NPU daemons do not work. Logs: journalctl -b -u 'vela-npu@*' -u vela-npu-listener"

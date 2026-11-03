@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.17 (draft, not released)
+
+NPU part only; the plugin zip stays `vela-0.8.16.zip`.
+
+### New
+- **NPU package 13** (`vela-npu-sysext-13.raw`, sha256 `ac9672ba83e20d4e001261f6c22c7ba27f15d93fd9376c22b62bc4ba5e653deb`): one image for both chips.
+  - **Snapdragon 8 Elite (SM8750, AYN Odin 3): FSR 4 on the NPU (experimental, untested on a device).** The 7 FSR 4 graphs
+    built for HTP v79 (`/usr/lib64/vela-npu/v79/`), the QNN 2.47.0.260601 HTP v79 runtime (4 files, unmodified) and two
+    systemd drop-ins: on `qcom,sm8750` each daemon loads the v79 build of its graph; on other chips nothing changes.
+    On Qualcomm's x86 HTP simulator the v79 graphs give the same output as the v73 graphs, byte for byte.
+  - **SM8550: unchanged.** Every program, graph and library of package 12 is in package 13 byte for byte. The systemd
+    units, the udev rule and the modules-load file differ only in their comments (now built from `npu/units/`), and the
+    three files that describe the image (`extension-release`, `MANIFEST.md5`, the licence folder's `README.txt`) are new.
+- `install-vela-npu.sh` accepts `qcom,sm8750` (it prints "SM8750 (Odin 3): not tested on a device yet") and checks every
+  daemon against the v79 output hashes there; another device's own DSP shell files are used with a warning, as before.
+
 ## 0.8.16 — 2026-11-02
 
 Release asset `vela-0.8.16.zip`, md5 `11d684e137ea0e0f4d8777ffe5731253`.

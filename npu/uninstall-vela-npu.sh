@@ -1,6 +1,6 @@
 #!/bin/sh
 # Removes the Vela NPU system part (install-vela-npu.sh). Needs sudo once. Vela then runs FSR 4 on the GPU.
-#   curl -fsSL https://github.com/zrprod9-cmyk/vela/releases/download/v0.8.16/uninstall-vela-npu.sh | sudo sh
+#   curl -fsSL https://github.com/zrprod9-cmyk/vela/releases/download/v0.8.17/uninstall-vela-npu.sh | sudo sh
 set -u
 UNITS="vela-npu@nf4_exact.service vela-npu@nf4_k1h.service vela-npu@nf4_k1h_360.service vela-npu@nf4_k1h_450.service vela-npu@nf4up_k1h.service vela-npu@nf4up_k1h_450.service vela-npu@nf4up_k1h_360.service"
 [ "$(id -u)" = 0 ] || { echo "Vela NPU uninstall: FAILED - run it with sudo"; exit 1; }

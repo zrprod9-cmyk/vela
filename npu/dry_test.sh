@@ -1,20 +1,23 @@
 #!/bin/sh
-# Dry run of install-vela-npu.sh steps 1-2 in a fedora:44 container (x86-64, no root actions): a local image and a stand-in
-# for the device's dsp partition. Checks that the installer needs no Qualcomm SDK, stages the DSP files, and refuses a wrong
-# image (sha256).
-# Inputs: IMG (vela-npu-sysext-12.raw), DSP_TREE (the extracted file tree of the device's dsp partition),
+# Dry run of install-vela-npu.sh steps 1-2 in a fedora:44 container (x86-64, no root actions): a local image, a stand-in
+# for the device's dsp partition and a stand-in device-tree compatible. Checks that the installer needs no Qualcomm SDK,
+# detects the chip, stages the DSP files (another device's own copies with a warning), refuses an unsupported chip and a
+# wrong image (sha256).
+# Inputs: IMG (vela-npu-sysext-13.raw), DSP_TREE (the extracted file tree of the device's dsp partition),
+# COMPATIBLE (the device-tree compatible list, space-separated; default "retroidpocket,rp6 qcom,qcs8550 qcom,sm8550"),
 # optional PAYLOAD_MD5 (md5 list of the tested NPU package, "<md5>  ./usr/..."): the merged file set is compared with it.
-#   docker run --rm -v <repo>/npu:/npu -v <inputs>:/in -e IMG=/in/vela-npu-sysext-12.raw -e DSP_TREE=/in/dsp \
+#   docker run --rm -v <repo>/npu:/npu -v <inputs>:/in -e IMG=/in/vela-npu-sysext-13.raw -e DSP_TREE=/in/dsp \
 #     registry.fedoraproject.org/fedora:44 sh /npu/dry_test.sh
 HERE=$(cd "$(dirname "$0")" && pwd)
-IMG=${IMG:?path to vela-npu-sysext-12.raw}
+IMG=${IMG:?path to vela-npu-sysext-13.raw}
 DSP_TREE=${DSP_TREE:?extracted dsp partition tree}
 dnf -y -q install e2fsprogs util-linux systemd udev squashfs-tools >/dev/null 2>&1
 mkdir -p /home/armada/Downloads
 useradd -M -d /home/armada armada 2>/dev/null
 # an ext4 image of the extracted dsp tree stands in for the dsp partition
 mkfs.ext4 -q -d "$DSP_TREE" /tmp/dsp_a.img 160M
-export VELA_NPU_DRY=1 VELA_NPU_PART=/tmp/dsp_a.img SUDO_USER=armada
+printf '%s ' ${COMPATIBLE:-retroidpocket,rp6 qcom,qcs8550 qcom,sm8550} | tr ' ' '\0' > /tmp/compatible
+export VELA_NPU_DRY=1 VELA_NPU_PART=/tmp/dsp_a.img SUDO_USER=armada VELA_NPU_COMPATIBLE=/tmp/compatible
 echo "--- run A: image only, no SDK on the machine"
 sh "$HERE/install-vela-npu.sh" --image "$IMG"; echo "rc $?"
 S=$(ls -d /tmp/vela-npu-install.* | head -1); (cd $S/stage && find . -type f | sort | xargs md5sum)
@@ -25,5 +28,8 @@ if [ -n "${PAYLOAD_MD5:-}" ]; then
     w=$(grep "  ./$f\$" "$PAYLOAD_MD5" | cut -d' ' -f1); g=$(md5sum $f | cut -d' ' -f1)
     [ "$w" = "$g" ] && echo "same $f" || echo "DIFF $f"; done)
 fi
+echo "--- run B: unsupported chip (qcom,sm8250; must fail)"
+printf 'retroidpocket,rp5\0qcom,sm8250\0' > /tmp/compatible_b
+VELA_NPU_COMPATIBLE=/tmp/compatible_b sh "$HERE/install-vela-npu.sh" --image "$IMG"; echo "rc $?"
 echo "--- run C: wrong image (must fail on sha256)"
 sh "$HERE/install-vela-npu.sh" --image "$HERE/install-vela-npu.sh"; echo "rc $?"

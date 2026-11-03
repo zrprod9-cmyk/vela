@@ -29,7 +29,7 @@ the Quick Access panel. Version **0.8.16** is an early public release: it works 
 |---|---|
 | 🧠 **FSR 4 on the NPU** — the FSR 4.1.1 INT8 network runs on the Hexagon NPU as a compiled graph (Control 1080p: 8.3 ms per frame); without the NPU part it runs on the GPU | ⚡ **FSR 4 Fast** — the same network with lighter GPU passes, about 1.9× faster than FSR 4 on the GPU; a 1.5× mode for 1080p Ultra Performance by default |
 | 🎮 **Works with DLSS, FSR 2/3 and XeSS inputs** — including DLSS with screen-size or jittered motion vectors (converted for FSR 4) | 🛠 **Game profiles** — Control, Resident Evil 4, Ghostrunner and Deep Rock Galactic get the in-game upscaler switched on for you (your own choice is kept) |
-| 🔁 **Switch while playing** — change the model in the panel while the game runs; **Off** puts the game's own files back | 📱 **Chip detection** — SM8550 gets everything; SM8750 (Odin 3) gets FSR 4 on the GPU, FSR 3, SGSR 2; other chips are named in the panel |
+| 🔁 **Switch while playing** — change the model in the panel while the game runs; **Off** puts the game's own files back | 📱 **Chip detection** — SM8550 gets everything; SM8750 (Odin 3) gets FSR 4 on the NPU with the NPU part (experimental, untested on a device); other chips are named in the panel |
 | 🩺 **Report a problem** — one button collects an anonymised report (≤ 5 MB), shows you the files, and sends only when you press Send | 📖 **Open source** — GPL-3.0: the plugin, our OptiScaler fork (as patches), the RE4 interceptor, the NPU layer |
 
 ## Models
@@ -48,7 +48,7 @@ the Quick Access panel. Version **0.8.16** is an early public release: it works 
 |---|---|---|
 | Retroid Pocket 6 | Snapdragon 8 Gen 2 (SM8550 / QCS8550, Adreno 740, HTP v73) | ✅ **tested** (all numbers below) |
 | AYN Odin 2 / Odin 2 Mini / Odin 2 Portal / Thor | SM8550 | 🟡 expected to behave the same (same chip), **not tested** |
-| AYN Odin 3 | Snapdragon 8 Elite (SM8750, Adreno 830, HTP v79) | 🟡 Vela detects the chip and offers **FSR 4 on the GPU, FSR 3 and SGSR 2**; no NPU and no FSR 4 Fast until an NPU package for HTP v79 exists. **Not tested on the device** |
+| AYN Odin 3 | Snapdragon 8 Elite (SM8750, Adreno 830, HTP v79) | 🟡 **FSR 4 on the NPU (experimental, untested on a device)** with NPU package 13 (the same graphs built for HTP v79, checked on Qualcomm's simulator); without the NPU part: FSR 4 on the GPU, FSR 3, SGSR 2 |
 | Retroid Pocket 5 / Retroid Pocket Mini and other SM8250 devices | Snapdragon 865 (SM8250) | 🟡 **partial, not tested**: plugin + FSR 3 + SGSR 2; FSR 4 not available (no compatible NPU) |
 | any other or unknown chip | — | Vela names the chip in the panel, no NPU, no FSR 4 Fast |
 
@@ -58,7 +58,7 @@ the Quick Access panel. Version **0.8.16** is an early public release: it works 
 - Games run through **Proton** (tested with Proton 11 ARM64) and must offer **DLSS, FSR 2/3 or XeSS** in their settings
   (Resident Evil 4: its FSR 2). Games without one of these have nothing for Vela to replace.
 - DX12 games get every model; DX11-only games get SGSR 2 only.
-- Optional: the **Vela NPU system part** for FSR 4 on the NPU (SM8550 only), see [Install](#install).
+- Optional: the **Vela NPU system part** for FSR 4 on the NPU (SM8550; SM8750 experimental), see [Install](#install).
 
 ## Tested games
 
@@ -113,14 +113,14 @@ FSR 3 is offered in the panel; it was not re-measured in a game for this release
    (Or **Install Plugin from URL** with the release file's URL.)
 3. Vela appears in the Quick Access menu as **Vela**.
 
-**2. Optional: the Vela NPU system part** (FSR 4 on the NPU; SM8550 only)
+**2. Optional: the Vela NPU system part** (FSR 4 on the NPU; SM8550, and SM8750 experimental)
 
 ```sh
-curl -fsSL https://github.com/zrprod9-cmyk/vela/releases/download/v0.8.16/install-vela-npu.sh | sudo sh
+curl -fsSL https://github.com/zrprod9-cmyk/vela/releases/download/v0.8.17/install-vela-npu.sh | sudo sh
 ```
 
 It is two systemd system extensions in `/var/lib/extensions` (nothing in armadaOS is overwritten): our image
-`vela-npu-sysext-12.raw` (the NPU daemon, 7 compiled FSR 4 graphs, FastRPC, units, a udev rule that gives the `render` group
+`vela-npu-sysext-13.raw` (the NPU daemon, 7 compiled FSR 4 graphs for HTP v73 and the same 7 for HTP v79, FastRPC, units, a udev rule that gives the `render` group
 access to `/dev/fastrpc-cdsp`, and the Qualcomm AI Engine Direct (QNN) runtime 2.47.0.260601, unmodified) and the DSP shell + C++ runtime, which the installer reads from your device's own dsp partition. No Qualcomm download is
 needed; `sudo` is needed once. Details, file list and removal: [npu/README.md](npu/README.md). Without it Vela runs FSR 4 and
 FSR 4 Fast on the GPU; the panel says which part is missing (not installed / installed incompletely / service not running).
@@ -202,8 +202,11 @@ which keeps the frame rate steadier and can cost some battery.
 <details>
 <summary><b>Does it work on the AYN Odin 3?</b></summary>
 
-Vela detects the Snapdragon 8 Elite and offers FSR 4 on the GPU, FSR 3 and SGSR 2. There is no NPU path and no FSR 4 Fast
-until an NPU package for HTP v79 exists. Not tested on the device; reports are welcome.
+FSR 4 on the NPU (experimental, untested on a device). NPU package 13 carries the 7 FSR 4 graphs built for the Hexagon
+HTP v79 of the Snapdragon 8 Elite; on Qualcomm's x86 HTP simulator their output equals the HTP v73 graphs byte for byte.
+The installer accepts `qcom,sm8750`, uses your device's own DSP shell, and on this chip the daemons use the v79 graphs.
+Nobody has run it on an Odin 3 yet, so the speed is unknown. Without the NPU part Vela offers FSR 4 on the GPU, FSR 3 and
+SGSR 2. Reports are welcome.
 </details>
 
 <details>
@@ -217,7 +220,8 @@ We are sending our data to the Armada developers.
 ## Known issues
 
 - **NPU part**: the public installer was run on a Retroid Pocket 6 with a local copy of the image (`--image`; 7 of 7 NPU
-  daemons OK); its download step from the release is new. The image (sha256 `392ba27e…a52a`) carries the Qualcomm QNN runtime.
+  daemons OK, package 12); its download step from the release is new. The image (package 13, sha256 `ac9672ba…3deb`)
+  carries the Qualcomm QNN runtime. Package 13 on SM8750 (Odin 3) has not been run on a device.
 - **Control looks washed out on SDR**: Vela's Control profile turns the game's HDR on, and the game then outputs scRGB.
   Possible workaround (not tested by us): switch HDR off in Control's settings. A profile fix is planned.
 - **Control sometimes exits on the title screen** (about 1 launch in 5 in our runs): the crash is inside the game's own
@@ -258,7 +262,7 @@ Licensing of the plugin's own code and of each bundled binary: [LICENSING.md](LI
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ### Qualcomm runtime in the NPU part
-The NPU part (`vela-npu-sysext-12.raw`) includes 6 unmodified files of the Qualcomm AI Engine Direct (QNN) runtime
+The NPU part (`vela-npu-sysext-13.raw`) includes 10 unmodified files of the Qualcomm AI Engine Direct (QNN) runtime
 2.47.0.260601, as part of Vela only; they are not offered as separate downloads. Qualcomm's licence (the Qualcomm AI Stack
 License) and its Notice File ship unchanged in the image at `/usr/share/licenses/armada-vela-npu/`
 (`Qualcomm-AI-Stack-LICENSE.pdf`, `QNN_NOTICE.txt`). Export control: see section 10(f) of that licence. No Qualcomm SDK
