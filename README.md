@@ -8,6 +8,8 @@
 [![Release](https://img.shields.io/github/v/release/zrprod9-cmyk/vela?color=2ea043)](../../releases/latest)
 [![Decky plugin](https://img.shields.io/badge/Decky-plugin-8a5cf6)](https://github.com/SteamDeckHomebrew/decky-loader)
 
+<a href="https://buymeacoffee.com/zrprod9"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-zrprod9-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee"></a>
+
 [Install](#install) · [Games](#games) · [How it works](#how-it-works) · [FAQ](#faq) · [Report a problem](#report-a-problem)
 
 </div>
@@ -161,6 +163,10 @@ runtime under Qualcomm's licence, which ships inside it. Details: [LICENSING.md]
 
 Bug reports with a `VELA-XXXXXX` number, games that work or don't, and pull requests are welcome. Build the plugin with
 `pnpm install && pnpm build`, then `build_zip.py`.
+
+## Support
+
+If Vela makes your games look better, you can [buy me a coffee](https://buymeacoffee.com/zrprod9) ☕
 
 ## Credits
 
