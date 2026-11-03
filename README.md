@@ -139,7 +139,6 @@ how it runs.
 
 ## Known issues
 
-- **Control looks washed out** on a non-HDR screen: switch HDR off in Control's settings.
 - Do not use the Decky **OptiScaler** plugin and Vela on the same game.
 - After switching the model while a game runs, restart the game.
 - Before uninstalling Vela, set your games to **Off**.
