@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.20 — 2026-11-04
+
+- **Vela no longer writes into game folders.** Its files are shown to the game only while it runs (an overlay), so
+  Steam's file check has nothing to repair and **Off** leaves nothing behind. Games set up by an older Vela move over by
+  themselves the next time you open the panel with the game closed.
+- Games that hand over their image in a compact HDR format (for example PRAGMATA) no longer crash with FSR 4.
+- The panel says when a game ran in DirectX 11 (Vela needs DirectX 12) and how to switch it.
+
 ## 0.8.19 — 2026-11-03
 
 - **Fix for games hanging at start on Snapdragon 8 Elite devices** (AYN Odin 3, KONKR Pocket FIT Elite). If a game still

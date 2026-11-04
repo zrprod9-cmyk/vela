@@ -20,6 +20,7 @@ import npu  # noqa: E402
 import presets  # noqa: E402
 import report  # noqa: E402
 import sgsr3  # noqa: E402
+import velakit  # noqa: E402
 import updater  # noqa: E402
 import upscale  # noqa: E402
 
@@ -62,6 +63,17 @@ class Plugin:
         carry_settings(settings)
         self.up = upscale.Upscaler(settings, home, log=decky.logger.info)
         self.s3 = sgsr3.Sgsr3(os.path.join(ASSETS, "sgsr3"), home, settings, log=decky.logger.info)
+        # 0.8.20: the kit reaches the game through vela-launch's overlay, nothing goes into the game folder; the Armada
+        # wrapper (plugin.json) when armada-game-launch runs plugin wrappers, else one launcher token in Steam's options;
+        # copying into the game folder when bwrap's overlay does not work for a game (sgsr3.overlay_ok)
+        try:
+            velakit.install_launcher(home, self.s3.kits_dir)
+            wrap = velakit.wrapper_supported() and velakit.plugin_declares_wrapper(os.path.dirname(os.path.abspath(__file__)))
+            self.s3.new_mode = "wrapper" if wrap else "launcher"
+        except Exception as e:
+            decky.logger.error(f"vela-launch not installed, files are copied into the game folders: {e}")
+            self.s3.new_mode = "copy"
+        decky.logger.info(f"Vela kit mode for new setups: {self.s3.new_mode}")
         self.ag = anygame.AnyGame(os.path.join(ASSETS, "layer"), home, settings, log=decky.logger.info)
         self.lat = latency.Latency(home, settings, log=decky.logger.info)
         self.cfg = gamecfg.GameCfg(settings, log=decky.logger.info)
@@ -465,6 +477,8 @@ class Plugin:
         shows the game): the layer's tokens are not in, or VELA_FSR2_ALGO is in what Vela recorded."""
         if not s3.get("installed"):
             return False
+        if self.s3.migrate_pending(appid) and appid not in gameutil.running_appids():
+            return True  # 0.8.20: a copy setup moves to the overlay
         if self.s3.launch_legacy(appid):
             return True  # 0.8.17: set up by an older Vela, no record of its own tokens yet
         st = self.npu.read(appid) or {}
@@ -476,15 +490,75 @@ class Plugin:
                                                         self.s3.launch_set(appid)) if isinstance(t, str))
 
     def _launch_fix(self, appid, launch_options):
-        """The panel's one-time migration of a game set up by an older Vela (0.8.15): see _launch_keep."""
+        """The panel's one-time migration of a game set up by an older Vela (0.8.15): see _launch_keep. 0.8.20: a game set
+        up by copying into its folder moves to the overlay while it is closed (_overlay_migrate)."""
         if launch_options is None or not self.s3.status(appid)["installed"]:
             return {"launch_options": launch_options}  # Steam's options not read: nothing to rewrite
-        return {"launch_options": self._launch_keep(appid, launch_options)}
+        if self.s3.migrate_pending(appid) and appid not in gameutil.running_appids():
+            return {"launch_options": self._overlay_migrate(appid, launch_options)}
+        mode = self._kit_mode(appid, None, launch_options)
+        if mode is None:
+            return {"launch_options": self._launch_keep(appid, launch_options)}
+        kit = self._launch_keep(appid, self.s3.kit_options(appid))
+        return {"launch_options": self._kit_out(appid, launch_options, kit, mode)}
+
+    def _kit_mode(self, appid, model, launch_options):
+        """The overlay mode ("wrapper" / "launcher") the launch options of this change go through, None: Steam's options
+        as before (a copy setup, the any-game layer, Off of a game not set up)."""
+        m = self.s3.install_mode(appid)
+        if m:
+            return None if m == "copy" else m
+        if model == "off" or self.ag.status(appid, self.s3.scan(appid)).get("installed"):
+            return None
+        m = self.s3.setup_mode(appid, launch_options)
+        return None if m == "copy" else m
+
+    def _kit_out(self, appid, launch_options, kit_options, mode):
+        """After an overlay change: Vela's own options into the kit (vela-launch applies them), and Steam's options: the
+        launcher token in while Vela is on and exactly out after Off (launcher mode), the player's as they are (wrapper)."""
+        on = self.s3.install_mode(appid) is not None
+        if on:
+            self.s3.set_kit_options(appid, kit_options)
+        if mode != "launcher":
+            return launch_options
+        return self.s3.steam_options(appid, launch_options, on)
+
+    def _overlay_migrate(self, appid, launch_options):
+        """A copy setup to the overlay (game closed): the game's files come back from the backup (md5-checked: a failed
+        check raises and the game stays as it is), Vela's tokens leave Steam's options exactly, then the same options go
+        into the kit. The live model (/tmp/vela-live) is not touched."""
+        st = self.s3.read_state(self.s3.where(appid)) or {}
+        npu_on = bool((self.npu.read(appid) or {}).get("on"))
+        launch = self.npu.disable(appid, launch_options) if npu_on else launch_options
+        res = self.s3.disable(appid, launch)
+        launch = res["launch_options"]
+        mode = self.s3.setup_mode(appid, launch)
+        if mode == "copy":  # the overlay stopped working in the meantime: set up as before
+            r = self.s3.enable(appid, st.get("opts"), launch, res.get("resolution"), mode="copy")
+            return self.npu.enable(appid, r["launch_options"]) if npu_on else r["launch_options"]
+        r = self.s3.enable(appid, st.get("opts"), self.s3.kit_options(appid), res.get("resolution"), mode=mode)
+        kit = self.npu.enable(appid, r["launch_options"]) if npu_on else r["launch_options"]
+        if isinstance(st.get("launch_prev"), str) and st.get("launch_prev") == st.get("launch_set"):
+            # the record took Vela's own options for the player's, so the restore gave Vela's tokens back
+            launch = sgsr3.drop_kit_env(launch, kit)
+        self.s3.log(f"sgsr3: {appid}: moved from the game folder to the overlay ({mode})")
+        return self._kit_out(appid, launch, kit, mode)
 
     async def launch_fix(self, appid, launch_options):
         return await self._run(self._launch_fix, str(appid), launch_options)
 
     def _apply_model(self, appid, model, launch_options, resolution):
+        """0.8.20: in an overlay setup the modules edit the kit's own options instead of Steam's (_kit_out)."""
+        if launch_options is None:
+            raise RuntimeError(sgsr3.NOT_READ)
+        mode = self._kit_mode(appid, model, launch_options)
+        if mode is None:
+            return self._apply_model_opts(appid, model, launch_options, resolution)
+        res = self._apply_model_opts(appid, model, self.s3.kit_options(appid), resolution, mode)
+        res["launch_options"] = self._kit_out(appid, launch_options, res["launch_options"], mode)
+        return res
+
+    def _apply_model_opts(self, appid, model, launch_options, resolution, mode=None):
         """The model picked by hand: fsr4, fsr3, sgsr2 or "off". The first pick puts the files in (resolution =
         Steam's override as it is, for the undo); a change in a game that is on is live (model=) plus the NPU layer in
         the launch options. FSR 4 gets the NPU when it is ready (picking it again keeps the choice);
@@ -520,7 +594,7 @@ class Plugin:
         if not s3["installed"]:
             # 0.8.15: no ratio override: the game's own DLSS / FSR preset sets the render
             opts = {**s3["opts"], "mode": "custom", "model": "auto", "res": "auto", "algo": "student", "ratio": "game"}
-            res = self._s3_enable(appid, opts, launch_options, resolution)
+            res = self._s3_enable(appid, opts, launch_options, resolution, mode)
             launch = res["launch_options"]
             override = res.get("resolution")
         else:
@@ -550,7 +624,7 @@ class Plugin:
     async def window_fix(self, appid):
         return await self._run(self._window_fix, str(appid))
 
-    def _s3_enable(self, appid, opts, launch_options, resolution):
+    def _s3_enable(self, appid, opts, launch_options, resolution, mode=None):
         if self.ag.status(appid, self.s3.scan(appid)).get("installed"):
             raise RuntimeError("the layer upscale is on for this game: switch it off first")
         want = self.lat.wanted(appid)
@@ -560,7 +634,7 @@ class Plugin:
         if npu_on:
             launch_options = self.npu.disable(appid, launch_options)
         res = self.s3.enable(appid, {**(opts or {}), "latency": want["on"], "fps": want["fps"]}, launch_options,
-                             resolution)
+                             resolution, mode)
         if npu_on:
             res["launch_options"] = self.npu.enable(appid, res["launch_options"])
         self._sync_gamescope(appid, True, False)

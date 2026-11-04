@@ -4,8 +4,8 @@ Base: [justradical/Sloptiscaler](https://github.com/justradical/Sloptiscaler) co
 = ARM64EC build of [OptiScaler](https://github.com/optiscaler/OptiScaler) 10.0.0.1 with an SGSR 2 backend.
 Our changes are the patches in `patches/`, applied in number order. License: GPL-3.0 (`LICENSE`, OptiScaler's).
 
-The `OptiScaler.dll` in Vela 0.8.19 (md5 `3667e416ac97748dd27431b00e31a4cc`, 18 450 432 bytes) was built from the base +
-**0001–0008 and 0010–0020** (patch 0009 and the experimental upstream-sync patch 0000 are not part of this build and are not
+The `OptiScaler.dll` in Vela 0.8.20 (md5 `48a888ee9ccb654f527d368fcf2623c3`, 18 479 616 bytes) was built from the base +
+**0001–0008 and 0010–0021** (patch 0009 and the experimental upstream-sync patch 0000 are not part of this build and are not
 included). Checksums of the patch files: `patches.md5`.
 
 | patch | what |
@@ -20,6 +20,7 @@ included). Checksums of the patch files: `patches.md5`.
 | 0018 | model `fsr4fast` (FSR 4 Fast) |
 | 0019 | MV pass: converts display-size / jittered motion vectors (DLSS input) to the render-size, non-jittered vectors FSR 4 needs |
 | 0020 | GPU identification without a held lock: fixes the start hang on Snapdragon 8 Elite; `VELA_OPTI_GPUTHREAD=0` turns the early identification off, `VELA_OPTI_LOGLEVEL=<n>` sets the log level |
+| 0021 | an output the upscalers cannot write (R9G9B9E5) goes through an RGBA16F image, then a pack pass and a copy into the game's output |
 
 ## Build
 
@@ -43,7 +44,7 @@ Pinned inputs:
 
 ### Reproducing the release DLL
 
-The `OptiScaler.dll` of Vela 0.8.19 (md5 `3667e416ac97748dd27431b00e31a4cc`) is this build with
+The `OptiScaler.dll` of Vela 0.8.20 (md5 `48a888ee9ccb654f527d368fcf2623c3`) is this build with
 
     FORK_BUILD_DATE=2026-11-02 sh fork/build/build.sh out
 

@@ -24,6 +24,7 @@ import urllib.error
 import urllib.request
 import uuid
 import zipfile
+import velakit
 
 MAX_ZIP = 5 * 1024 * 1024
 RATE_MAX, RATE_WINDOW = 3, 3600
@@ -207,6 +208,9 @@ def assess(log_text, summary=None, kernel=None, npu_layer=None, intercept=False,
         "npu_fallbacks": n.get("fallbacks") or 0,
         "npu_errors": (layer.get("errors") or 0) + (layer.get("timeouts") or 0),
         "mode": s.get("mode"),
+        # 0.8.20: causes the panel already tells the player (no report needed): the run in DirectX 11, a refused format
+        "dx11": s.get("api") == "dx11",
+        "out_format": bool(s.get("out_format")),
     }
     why = [k for k in ("gpu_hang", "gpu_faults", "fsr4_fallback", "sgsr2_instead", "fsr3_fallback", "npu_fallback",
                        "npu_fallbacks", "npu_errors", "short_run") if flags[k]]
@@ -498,6 +502,13 @@ class Reporter:
                         "dxgi.dll", "amd_fidelityfx_upscaler_vk.dll", "amd_fidelityfx_dx12.dll", "OptiScaler.ini")}
             except Exception as e:
                 v["game_md5"] = {"error": str(e)}
+        # 0.8.20: how the kit reaches the game (wrapper / launcher / copy) and the launcher's last lines
+        if self.s3 is not None:
+            try:
+                v["install_mode"] = self.s3.install_mode(appid)
+                v["launcher_log"] = velakit.log_tail(self.s3.kits_dir, appid)
+            except Exception as e:
+                v["install_mode"] = {"error": str(e)}
         return v
 
     def system(self, appid):

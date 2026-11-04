@@ -1,6 +1,6 @@
 #!/bin/sh
 # Vela NPU system part, package 13: lets Vela run FSR 4 / FSR 4 Fast on the Hexagon NPU (Snapdragon 8 Gen 2, SM8550;
-# Snapdragon 8 Elite, SM8750, experimental: not tested on a device yet).
+# Snapdragon 8 Elite, SM8750, experimental).
 # Needs sudo ONCE (it adds a system extension, a udev rule and system services). Run in Desktop mode -> Konsole, game closed:
 #   curl -fsSL https://github.com/zrprod9-cmyk/vela/releases/download/v0.8.17/install-vela-npu.sh | sudo sh
 # What it does:

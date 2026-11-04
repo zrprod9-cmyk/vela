@@ -144,6 +144,10 @@ def hint(p, st):
     # the game's own Steam launch entries pick the API (Bright Memory: "StartGame (DX11)" / DX12): before the first frame through
     # the game's upscaler, and when SGSR 2 runs instead of the model picked (OptiScaler's DX11 path = the DX11 entry)
     dx11_run = log.get("sgsr3") and log.get("mode") == "sgsr2" and p["model"] != "sgsr2"
+    # 0.8.20: the last run was DirectX 11 (OptiScaler's lines): the game's DX12 entry when Steam offers one, else its setting.
+    # No -dx12 is added here: Vela adds it only for Unreal games without their own API entries (sgsr3.launch_build)
+    if p["kind"] != "static" and log.get("api") == "dx11":
+        return {"id": "dx12_choice"} if st.get("dx12_choice") else {"id": "dx11_run"}
     if p["kind"] != "static" and st.get("dx12_choice") and (not log.get("sgsr3") or dx11_run):
         return {"id": "dx12_choice"}
     if p["model"] in FSR4_MODELS:
@@ -165,6 +169,8 @@ def hint(p, st):
             if svc.get("unit_state") == "failed":
                 return {"id": "npu_failed"}
             return {"id": "npu_service"}
+    if log.get("out_format") and p["model"] in FSR4_MODELS:
+        return {"id": "out_format"}
     if running and log.get("sgsr3") and got and got != SCREEN:
         return {"id": "game_res", "got": got, "res": SCREEN}
     return None

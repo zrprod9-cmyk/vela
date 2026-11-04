@@ -18,6 +18,7 @@ declare const appStore: any;
 type Res<T> = { ok: true; data: T } | { ok: false; error: string };
 type NpuLog = { state: "on" | "fallback" | "off" | null; mode: string | null; reason: string | null };
 type S3Log = {
+  api?: string | null; out_format?: boolean;
   sgsr3: boolean; render: string | null; output: string | null; mode: string | null; calibrated?: boolean;
   fsr4_fallback?: string | null; fsr3_fallback?: string | null; sgsr2_fallback?: string | null;
   not_offered?: string | null; npu?: NpuLog | null;
@@ -146,6 +147,8 @@ function statusOf(gs: GameState): Status {
   if (L.not_offered) return { dot: YELLOW, text: t("st.notOffered", { key: L.not_offered, runs }), sub: sizes };
   if (L.fsr4_fallback || L.sgsr2_fallback) return { dot: YELLOW, text: t("st.failed", { want: wantName, runs }), sub: sizes };
   if (L.fsr3_fallback) return { dot: YELLOW, text: t("st.failed", { want: MODEL_NAME.fsr3, runs }), sub: sizes, why: t("st.fsr3FailedSub") };
+  // the last run was DirectX 11: no upscaler of Vela's can start (the hint says what to switch)
+  if (!L.sgsr3 && L.api === "dx11") return { dot: YELLOW, text: t("st.dx11") };
   // no frame through the game's upscaler yet (its menu): waiting, not an error
   if (!L.sgsr3) {
     const what = isStatic ? t("st.waitingFsr2") : t("st.waitingMenu", { hint: menuHint(gs.scan?.inputs, s3.menu_hint) });

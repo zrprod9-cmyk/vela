@@ -123,5 +123,8 @@
   "up.err.bad_zip": "The download is not a Vela plugin; nothing was installed",
   "up.err.not_newer": "There is no newer version",
   "up.err.no_decky": "Decky could not start the install",
-  "up.err.other": "The update check failed: {why}"
+  "up.err.other": "The update check failed: {why}",
+  "hint.dx11_run": "The game ran in DirectX 11. Vela works in DirectX 12: switch the game to DX12 in its graphics settings (or add -dx12 to its Steam launch options), then restart it",
+  "hint.out_format": "FSR 4 cannot write this game's image format: pick FSR 3 or SGSR 2",
+  "st.dx11": "The game ran in DirectX 11 — Vela needs DirectX 12"
 }

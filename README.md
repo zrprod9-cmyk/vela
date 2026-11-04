@@ -85,7 +85,9 @@ It asks for your password once and ends with `Vela NPU: OK`. Without it, FSR 4 r
 
 - **Update:** when there is a new version, the Vela panel shows it (Vela checks once a day, or press **Check now**). Press
   **Update** and confirm in Decky. Installing the new zip the same way also works.
-- **Take Vela out of a game:** Vela panel → **Off**. The game's own files come back.
+- **Take Vela out of a game:** Vela panel → **Off**. Vela does not change the game's folder: it shows its files to the
+  game only while the game runs. Where the system cannot do that, Vela copies them in and **Off** puts the game's own
+  files back.
 - **Remove the plugin:** set every game to **Off** first, then uninstall Vela in Decky.
 
 </details>
@@ -111,6 +113,9 @@ Vela uses its own fork of [OptiScaler](https://github.com/optiscaler/OptiScaler)
 [justradical/Sloptiscaler](https://github.com/justradical/Sloptiscaler)) to take the game's upscaler input, a Vulkan FSR 4
 provider, and a small Vulkan layer that runs the FSR 4 network on the NPU. If the NPU is late, that frame runs on the GPU, so
 the game never waits on it.
+
+Vela's files stay in its own folder. When a game starts, a small launcher lays them over the game's folder (a bubblewrap
+overlay) for that game only, so the installed game is never modified and Steam's file check has nothing to repair.
 
 ## Report a problem
 

@@ -49,7 +49,7 @@ for i in re.findall(r'\{"id": "(\w+)"', read(ROOT, "py_modules", "presets.py")):
     assert f"hint.{i}" in en, i
 # the English texts are the ones the panel had before the Russian language was removed: spot checks
 assert en["rp.button"] == "Report a problem" and en["off_title"] == "Off" and en["hint.chip_unknown"] == "unknown chip"
-assert len(en) == 125, len(en)  # incl. model.why.chip_no_fsr4 and the 20 update texts (up.*)
+assert len(en) == 128, len(en)  # 0.8.20: hint.dx11_run, hint.out_format, st.dx11; incl. model.why.chip_no_fsr4 and the 20 update texts (up.*)
 # every reason py_modules/updater.py can give the panel has a text (network / github have their own wording)
 upd_src = read(ROOT, "py_modules", "updater.py")
 codes = set(re.findall(r'UpdateError\("(\w+)', upd_src)) | {"network", "github"}

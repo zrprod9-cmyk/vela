@@ -1,0 +1,10 @@
+[12:00:00.000001] [I]  Upscalers.Dx11Upscaler: sgsr2_12
+[12:00:00.000002] [I]  Upscalers.Dx12Upscaler: sgsr3
+[12:00:00.100000] [I] InitFfxDx12 LoadResult: true
+[12:00:00.200000] [W] GetDriverStore Failed to query adapter info -3FFFFFFE
+[12:00:00.300000] [I] hkvkCreateInstance Adding Vulkan w/Dx12 extensions
+[12:00:01.000000] [I] NVSDK_NGX_D3D12_Init_Ext AppId: 100000000
+[12:00:01.000100] [I] NVSDK_NGX_D3D12_Init_Ext SDK: 15
+[12:00:06.000000] [I] CreateSwapChain Failed to get ID3D12CommandQueue from pDevice, creating Dx11 swapchain!
+[12:00:07.000000] [I] UpdateXInputIntegration XInput hooks installed
+[12:00:07.000100] [I] MenuHdrCheck Output HDR: true, UI Mode: SDR

@@ -14,5 +14,10 @@
     "description": "Vela: per-game upscaling on Snapdragon handhelds. FSR 4 (on the NPU), FSR 3 or SGSR 2 instead of the game's DLSS/FSR, picked by hand; Vela puts the files in place and says what to set in the game.",
     "image": "https://raw.githubusercontent.com/zrprod9-cmyk/vela/main/docs/icon.png"
   },
-  "license": "GPL-3.0-only"
+  "license": "GPL-3.0-only",
+  "armada": {
+    "launch": {
+      "wrapper": "~/.local/share/vela/bin/vela-launch"
+    }
+  }
 }
