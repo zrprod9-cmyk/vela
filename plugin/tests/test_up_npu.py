@@ -31,7 +31,7 @@ with open(os.path.join(os.path.dirname(__file__), "..", "src", "strings.ts"), en
 assert "releases/latest/download/install-vela-npu.sh | sudo sh" in ts and ("fsr4" + "bench") not in ts
 with open(os.path.join(os.path.dirname(__file__), "..", "src", "i18n", "en.json"), encoding="utf-8") as fh:
     ts += fh.read()
-assert "(package 12)" in ts
+assert "(package 14)" in ts and "(package 12)" not in ts
 assert "install_v10" not in ts and "install_v11" not in ts and "install_v9" not in ts and "(package 10)" not in ts
 # installed but not running -> why: no Qualcomm runtime / a failed unit / not started
 import presets  # noqa: E402

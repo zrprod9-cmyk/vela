@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import sys
 
@@ -83,7 +84,8 @@ class Plugin:
         # 0.8.0: the FSR 4 network on the NPU (our layer assets/npu + the system's fsr4npud, py_modules/npu.py)
         # 0.8.16: the chip (device-tree / socinfo) decides whether the NPU and FSR 4 Fast are offered at all
         self.dev = device.detect()
-        self.chip = device.policy(self.dev, device.V79_DIRS + (os.path.join(ASSETS, "npu", "v79"),))
+        self.v79_dirs = device.V79_DIRS + (os.path.join(ASSETS, "npu", "v79"),)
+        self.chip = device.policy(self.dev, self.v79_dirs)
         decky.logger.info(f"Vela device: {device.state(self.dev, self.chip)}")
         self.npu = npu.Npu(os.path.join(ASSETS, "npu"), home, settings, log=decky.logger.info, chip=self.chip)
         try:
@@ -204,7 +206,9 @@ class Plugin:
 
     async def _run(self, fn, *args):
         try:
-            return {"ok": True, "data": await asyncio.to_thread(fn, *args)}
+            data = await asyncio.to_thread(fn, *args)
+            json.dumps(data)  # an answer Decky cannot send gets no reply at all: the panel would wait for ever (0.8.21)
+            return {"ok": True, "data": data}
         except Exception as e:
             decky.logger.exception(f"{fn.__name__} failed")
             return {"ok": False, "error": str(e) or e.__class__.__name__}
@@ -216,6 +220,8 @@ class Plugin:
     def _game_state(self, appid, window=None):
         """window: Steam's resolution override for the game as the panel read it (GetResolutionOverrideForApp; None = not
         read): the steps say when it is not the window the mode needs (0.8.11)."""
+        if getattr(self, "chip", None) is not None:
+            device.refresh(self, self.v79_dirs, log=decky.logger.info)  # 0.8.21: NPU part installed while the plugin runs
         running = gameutil.running_appids()
         if getattr(self, "rep", None):
             self.rep.observe(running)
@@ -313,7 +319,7 @@ class Plugin:
         # 0.8.13: no any-game layer (ag_assets=False): a game without DLSS / FSR / XeSS is "Not supported"
         v = self.check.check(scan, static=bool(profiles.static_fsr2(appid)),
                              s3_assets=os.path.isfile(os.path.join(ASSETS, "sgsr3", "OptiScaler.dll")),
-                             ag_assets=False)
+                             ag_assets=False, appid=appid)
         if s3.get("installed") and v["kind"] not in presets.KINDS and v["reason"] != "anticheat":
             # installed by hand / an older version: keep what is in the folder
             v = {**v, "kind": "static" if s3.get("static_fsr2") else "fsr4", "reason": None}

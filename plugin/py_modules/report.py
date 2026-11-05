@@ -212,8 +212,11 @@ def assess(log_text, summary=None, kernel=None, npu_layer=None, intercept=False,
         "dx11": s.get("api") == "dx11",
         "out_format": bool(s.get("out_format")),
     }
+    # 0.8.21: an output with no NPU graph is no failure: the GPU path runs and the panel's hint tells it.
+    # The flag stays for a report the player sends himself.
     why = [k for k in ("gpu_hang", "gpu_faults", "fsr4_fallback", "sgsr2_instead", "fsr3_fallback", "npu_fallback",
-                       "npu_fallbacks", "npu_errors", "short_run") if flags[k]]
+                       "npu_fallbacks", "npu_errors", "short_run")
+           if flags[k] and not (k == "npu_fallback" and flags[k] == "size")]
     flags["bad"] = bool(why)
     flags["why"] = why
     return flags

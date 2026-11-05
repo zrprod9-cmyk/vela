@@ -501,7 +501,7 @@ function GameContent({ visible }: { visible: boolean }) {
 
   const status = statusOf(gs);
   const speed = ["fsr4", "sgsr2", "static"].includes(kind) ? t(`speed.${kind}` as Key) : null;
-  const fsr1 = kind === "none" && gs.check.reason !== "not_installed";
+  const fsr1 = kind === "none" && !["not_installed", "non_steam"].includes(gs.check.reason ?? "");
   const offered = new Map(gs.models.map((m) => [m.id, m.ok]));
   const why = new Map(gs.models.map((m) => [m.id, m.why])); // "chip_no_fsr4" = the chip, not the build
   const modelButton = (m: ModelId | "off") => {

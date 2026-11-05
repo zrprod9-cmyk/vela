@@ -1,7 +1,7 @@
 # Vela FSR 4 provider for Vulkan: complete corresponding source
 
-`upscale/assets/sgsr3/amd_fidelityfx_upscaler_vk.dll` in the Vela 0.8.16 zip is built from this folder. The build is reproducible: it fixes the image
-base of the DLL, pins the MinGW packages and checks the Vulkan-Headers commit. `build.sh` prints the md5 of the DLL; it must be `9aa4f51d3fcfb6c5b2c963fa2ccba038`.
+`upscale/assets/sgsr3/amd_fidelityfx_upscaler_vk.dll` in the Vela 0.8.21 zip is built from this folder. The build is reproducible: it fixes the image
+base of the DLL, pins the MinGW packages and checks the Vulkan-Headers commit. `build.sh` prints the md5 of the DLL; it must be `d230a1208c5ad78b6ea573536d41184f`.
 
 ## License
 - Provider code (fsr4vk's own code and the Vela changes in `overlay/`): **GPL-3.0** (`fsr4vk/LICENSES/GPL-3.0.txt`).
@@ -32,7 +32,7 @@ base of the DLL, pins the MinGW packages and checks the Vulkan-Headers commit. `
 ## Build
 1. Install Docker. From this folder run `sh build.sh` (Linux, macOS or Git Bash on Windows; ~10 min, network needed).
 2. The build log must end with `PASS: frozen inputs, AMD64 exports, asset identities and normal/debug modes`.
-3. `md5sum out/amd_fidelityfx_upscaler_vk.dll` must print `9aa4f51d3fcfb6c5b2c963fa2ccba038`. What makes the result the same on every run:
+3. `md5sum out/amd_fidelityfx_upscaler_vk.dll` must print `d230a1208c5ad78b6ea573536d41184f`. What makes the result the same on every run:
    - base image `ubuntu:24.04` with the MinGW packages pinned in `build/dll_build_prv.sh` (`g++-mingw-w64-x86-64-posix 13.2.0-6ubuntu1+26.1`,
      `binutils-mingw-w64-x86-64 2.41.90.20240122-1ubuntu1+11.4`; the versions are printed at the top of `out/build.log`);
    - Vulkan-Headers `v1.4.367`, checked against commit `9fbc2a782ee3f8a4db64e7d991e23da75e893f44`;

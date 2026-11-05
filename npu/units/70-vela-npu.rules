@@ -1,4 +1,4 @@
-# Vela NPU: unprivileged nodes for vela-npu@.service (a dynamic user in group render).
+# Vela NPU: unprivileged nodes for vela-npu.service (a dynamic user in group render).
 # /dev/fastrpc-cdsp: unsigned-PD sessions for the QNN HTP backend.
 # /dev/dma_heap/system: shared buffers come from the kernel system dma-heap instead of
 # fastrpc-owned buffers (avoids the fastrpc_buf_free use-after-free on teardown seen on 7.2.6).

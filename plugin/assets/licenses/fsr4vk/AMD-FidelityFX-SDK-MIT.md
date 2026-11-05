@@ -6,7 +6,7 @@ This provider embeds compute shaders and network weights derived from AMD softwa
   and modified by the Vela and fsr4vk projects.
 - FSR 4.1.2 Lite: captured from amd_fidelityfx_upscaler_vk.dll, AMD FSR SDK 2.4.0,
   Kits/FidelityFX/signedbin/ (commit 7539ae8b6568ad29ed78a753404351daf3b5cca7), and modified by the Vela project.
-This build contains no FSR 4.0.2 material (Vela release provider, md5 9aa4f51d3fcfb6c5b2c963fa2ccba038).
+This build contains no FSR 4.0.2 material (Vela release provider, md5 d230a1208c5ad78b6ea573536d41184f).
 AMD's SDK license (docs/license.md) lists these signed DLLs under the following license:
 
 Copyright (C) Advanced Micro Devices, Inc.

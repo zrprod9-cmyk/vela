@@ -49,10 +49,8 @@ try:
         fh.write("Vela live: handle 1 model ai\nInitializing SGSR3 960x540 -> 1920x1080\nSGSR3 student: on\n")
     assert sgsr3.log_summary(log)["npu"] is None
 
-    # ---- the service: /proc/net/unix and the unit file; cached
+    # ---- the service: /proc/net/unix and the graph files; cached
     proc = os.path.join(tmp, "unix")
-    units = os.path.join(tmp, "units")
-    os.makedirs(units)
     hdr = "Num       RefCount Protocol Flags    Type St Inode Path\n"
     with open(proc, "w") as fh:
         fh.write(hdr + "0000000000000000: 00000002 00000000 00010000 0001 01 12345 @fsr4npud-other\n")
@@ -62,26 +60,34 @@ try:
     home, settings = os.path.join(tmp, "home"), os.path.join(tmp, "settings")
     graphs = os.path.join(tmp, "graphs")
     os.makedirs(graphs)
-    n = npu.Npu(assets, home, settings, log=lambda *_: None, proc_net_unix=proc, unit_dirs=(units,),
+    n = npu.Npu(assets, home, settings, log=lambda *_: None, proc_net_unix=proc,
                 systemctl=lambda u: calls.append(u) or "inactive", graph_dir=graphs)
     sv = n.service()
     assert sv["installed"] is False and sv["running"] is False and not calls, sv  # nothing there: no systemctl
-    # 0.8.15: the Lite daemon alone (unit vela-npu.service, socket @fsr4npud) is not "the NPU is there"
-    with open(os.path.join(units, "vela-npu.service"), "w") as fh:
-        fh.write("[Service]\n")
+    # 0.8.15: the Lite socket @fsr4npud is not "the NPU is there"
     with open(proc, "w") as fh:
         fh.write(hdr + "0000000000000000: 00000002 00000000 00010000 0001 01 12345 @fsr4npud\n")
     sv = n.service(fresh=True)
     assert sv["installed"] is False and sv["running"] is False and not calls and not n.ready(), sv
-    # the template unit of the full daemons: installed, none listens yet: systemctl says why
-    with open(os.path.join(units, npu.TEMPLATE_UNIT), "w") as fh:
-        fh.write("[Service]\n")
+    # a graph file of package 13: installed, none listens yet: systemctl says why, about package 13's own unit
+    with open(os.path.join(graphs, "nf4_k1h.bin"), "wb") as fh:
+        fh.write(b"g")
     assert n.service()["installed"] is False, "cached for 30 s"
     sv = n.service(fresh=True)
-    assert sv["installed"] and not sv["running"] and sv["unit_state"] == "inactive" and calls[0] == npu.K1H_UNIT, sv
-    # a full daemon listens: running, whatever the Lite daemon does (it is gone here) and without any unit file
-    os.remove(os.path.join(units, npu.TEMPLATE_UNIT))
-    os.remove(os.path.join(units, "vela-npu.service"))
+    assert sv["installed"] and not sv["running"] and sv["unit_state"] == "inactive" and calls == [npu.STATE_UNITS[1]], sv
+    assert sv["k1h_unit"] == "vela-npu@nf4_k1h.service" and sv["k1h360_unit"] == "vela-npu@nf4_k1h_360.service", sv
+    # a graph file of package 14: the one daemon, first in STATE_UNITS
+    with open(os.path.join(graphs, npu.SIZES_GRAPH), "wb") as fh:
+        fh.write(b"g")
+    calls.clear()
+    sv = n.service(fresh=True)
+    assert sv["installed"] and sv["unit_state"] == "inactive" and calls == ["vela-npu.service"] == [npu.STATE_UNITS[0]], sv
+    assert {sv[k] for k in ("full_unit", "k1h_unit", "k1h360_unit", "k1h450_unit")} == {"vela-npu.service"}, sv
+    assert npu.FULL_UNIT == npu.K1H_UNIT == npu.K1H360_UNIT == npu.K1H450_UNIT == npu.UP_UNIT == "vela-npu.service"
+    assert not hasattr(npu, "TEMPLATE_UNIT")
+    # a full daemon listens: running, whatever the Lite daemon does (it is gone here) and without any graph file
+    os.remove(os.path.join(graphs, "nf4_k1h.bin"))
+    os.remove(os.path.join(graphs, npu.SIZES_GRAPH))
     with open(proc, "w") as fh:
         fh.write(hdr + "0000000000000000: 00000002 00000000 00010000 0001 01 12345 @fsr4npud_nf4_k1h\n")
     calls.clear()

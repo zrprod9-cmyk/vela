@@ -146,7 +146,7 @@ P.lat = latency.Latency(home, settings, log=lambda *a: None)
 P.cfg = gamecfg.GameCfg(settings, log=lambda *a: None)
 P.live = live.Live(settings, log=lambda *a: None)
 P.npu = npu.Npu(os.path.join(assets, "npu"), home, settings, log=lambda *a: None, proc_net_unix=os.path.join(tmp, "nounix"),
-                unit_dirs=(), systemctl=lambda: None)
+                systemctl=lambda: None)
 P.floor = Nop()
 P.cpu = Nop()
 P.check = gamecheck.GameCheck(settings, log=lambda *a: None)

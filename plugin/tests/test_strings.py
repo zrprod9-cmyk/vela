@@ -39,8 +39,8 @@ used = set(re.findall(r'\bt\("([\w.]+)"', code))
 assert used and used <= set(en), used - set(en)
 for fam, ids in {"model.note": ["fsr4", "fsr4fast", "fsr3", "sgsr2", "off"], "model.why": ["chip_no_fsr4"], "speed": ["fsr4", "sgsr2", "static"],
                  "rp.reason": ["crash", "fsr", "image", "slow", "other"],
-                 "reason": ["anticheat", "not_installed", "opengl", "vulkan_native", "no_inputs", "no_exe", "godot"],
-                 "hint": ["restart_window", "dx12_choice", "npu_missing_layer", "npu_install", "npu_update_up", "npu_qnn",
+                 "reason": ["anticheat", "not_installed", "non_steam", "opengl", "vulkan_native", "no_inputs", "no_exe", "godot"],
+                 "hint": ["restart_window", "dx12_choice", "npu_missing_layer", "npu_install", "npu_update_up", "npu_update_sizes", "npu_qnn",
                           "npu_service", "npu_failed", "game_res", "chip_v79", "chip_other", "chip_unknown"]}.items():
     for i in ids:
         assert f"{fam}.{i}" in en, f"{fam}.{i}"
@@ -49,7 +49,7 @@ for i in re.findall(r'\{"id": "(\w+)"', read(ROOT, "py_modules", "presets.py")):
     assert f"hint.{i}" in en, i
 # the English texts are the ones the panel had before the Russian language was removed: spot checks
 assert en["rp.button"] == "Report a problem" and en["off_title"] == "Off" and en["hint.chip_unknown"] == "unknown chip"
-assert len(en) == 128, len(en)  # 0.8.20: hint.dx11_run, hint.out_format, st.dx11; incl. model.why.chip_no_fsr4 and the 20 update texts (up.*)
+assert len(en) == 130, len(en)  # 0.8.21: hint.npu_update_sizes, reason.non_steam; 0.8.20: hint.dx11_run, hint.out_format, st.dx11; incl. model.why.chip_no_fsr4 and the 20 update texts (up.*)
 # every reason py_modules/updater.py can give the panel has a text (network / github have their own wording)
 upd_src = read(ROOT, "py_modules", "updater.py")
 codes = set(re.findall(r'UpdateError\("(\w+)', upd_src)) | {"network", "github"}

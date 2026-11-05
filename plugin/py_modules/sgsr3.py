@@ -1508,7 +1508,7 @@ class Sgsr3:
         out = {"scan": sc, "available": bool(sc["exe_dir"]) and not sc["anticheat"], "installed": st is not None,
                "opts": dict(DEFAULT_OPTS), "version": self.version.get("dll", ""), "intact": None, "log": None,
                "fg_available": self.fg_available(), "fsr4_available": self.fsr4_available(), "fsr3_available": self.fsr3_available(), "other_optiscaler": other, "menu_hint": menu_hint(sc),
-               "profile": profiles.profile(sc["appid"])}
+               "profile": profiles.public(sc["appid"])}
         out["opts"] = resolve_mode({**DEFAULT_OPTS, **profiles.defaults(sc["appid"])}, sc["appid"])
         out["modes"] = {m: dict(zip(("algo", "ratio"), profiles.mode_config(sc["appid"], m, MODE_CONFIG[m])))
                         for m in MODE_CONFIG}

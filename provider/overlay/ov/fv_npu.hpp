@@ -1,3 +1,6 @@
+// More output sizes on the HTP: kSizes lists output sizes with their own graphs, on top of 1080p / 900p / 720p, under the 720p path's conditions (k1h, fused pre,
+// input ping-pong, 1080p model capacity, which is every maxUpscaleSize <= 1920x1080). Each x tensor keeps the fused pre's literal 960-px rows, each k1 is dense at K2's
+// stride value[4].x / 2. A size or network change re-probes, as a 720p/900p change does. VELA_NPU_SIZES=0 turns these sizes off.
 // Vela 0.8.10: the state line names the schedule really run ("on, exact" / "on, async", say_on, exact_run set in plan()).
 // Vela 0.8.10: exact NPU mode (default on; live key npuexact=0|1 > env VELA_NPU_EXACT > 1). The async k1h path applies the network
 // of frame N-1 to frame N (K2(N) reads k1(N-1)): fine detail is filtered with the previous frame's per-pixel kernels (tested: true vs
@@ -131,6 +134,12 @@ inline bool exact_setting() { const int lv = live_int("npuexact="); if (lv >= 0)
 inline bool kick_setting() { const int lv = live_kick(); if (lv >= 0) return lv == 1; return kick_word(std::getenv("VELA_NPU_KICK")) != 0; }
 inline void chk(VkResult r, const char* w) { if (r != VK_SUCCESS) throw std::runtime_error(std::string("FV: ") + w + " " + std::to_string(int(r))); }
 
+struct SizeDim { uint32_t w, h; };
+inline constexpr SizeDim kSizes[] = {{1600, 904}, {1440, 810}, {1280, 800}, {1152, 648}, {960, 540}};
+inline const std::string kSizeGraph[][2] = {{"nf4_k1h_452", "nf4up_k1h_452"}, {"nf4_k1h_405", "nf4up_k1h_405"},
+                                            {"nf4_k1h_400", "nf4up_k1h_400"}, {"nf4_k1h_324", "nf4up_k1h_324"}, {"nf4_k1h_270", "nf4up_k1h_270"}};
+inline int size_index(uint32_t w, uint32_t h) { int i = 0; for (const SizeDim& d : kSizes) { if (d.w == w && d.h == h) return i; ++i; } return -1; }
+
 struct Bridge {
     const uint32_t kStride = env_i("E4_ALIGN", 1) ? 4u : 3u;   // Words per indirect triple (4 = 16 B aligned)
     VkPhysicalDevice pd{}; VkDevice dev{}; int mode = 0; bool delay = false; std::string graph;
@@ -159,8 +168,9 @@ struct Bridge {
     bool s720 = false, s720_used = false; std::string graph_k1h_360; const bool n7_720 = env_i("VELA_NPU_720", 1) != 0;   // 720p path
     bool s900 = false, s900_used = false; std::string graph_k1h_450; const bool n9_900 = env_i("VELA_NPU_900", 1) != 0;   // 900p path
     bool sup = false, sup_used = false; std::string graph_up, graph_up_450, graph_up_360;   // UP network (k1h only)
+    int szi = -1, szi_used = -1; const bool sizes_on = env_i("VELA_NPU_SIZES", 1) != 0;   // kSizes index of this frame, -1 none
     const bool up_1080 = env_i("VELA_NPU_UP", 1) != 0, up_900 = env_i("VELA_NPU_UP_900", 1) != 0, up_720 = env_i("VELA_NPU_UP_720", 1) != 0;   // 900p/720p UP on by default
-    const std::string& gk1h() const { return sup ? (s900 ? graph_up_450 : s720 ? graph_up_360 : graph_up) : (s900 ? graph_k1h_450 : s720 ? graph_k1h_360 : graph_k1h); }
+    const std::string& gk1h() const { if (szi >= 0) return kSizeGraph[szi][sup ? 1 : 0]; return sup ? (s900 ? graph_up_450 : s720 ? graph_up_360 : graph_up) : (s900 ? graph_k1h_450 : s720 ? graph_k1h_360 : graph_k1h); }
     // Exact mode state (see plan())
     bool exact_set = true, begun = false, tail_pend = false, dup_pend = false; int pcase = 0;
     bool exact_run = false;   // The last planned frame ran the exact pipeline (plan() case 1/3/4): the panel's "on, exact|async"
@@ -241,7 +251,7 @@ struct Bridge {
             auto pc = [&](double q) { return v.empty() ? 0.0 : v[std::min<size_t>(v.size() - 1, size_t(q * v.size()))]; };
             std::printf("FVSTATS mode %d delay %d graph %s frames %llu htp_ok %llu fallbacks %llu layer %d htp_ms mean %.3f p50 %.3f p90 %.3f max %.3f"
                         " kick %s kicks early %llu late %llu packs %llu exact %d tails %llu starts %llu drops %llu\n",
-                        mode, int(delay), (k1h_used ? (sup_used ? (s900_used ? graph_up_450 : s720_used ? graph_up_360 : graph_up) : (s900_used ? graph_k1h_450 : s720_used ? graph_k1h_360 : graph_k1h)) : graph).c_str(), (unsigned long long)frame, (unsigned long long)ok, (unsigned long long)fb, layer,
+                        mode, int(delay), (k1h_used ? szi_used >= 0 ? kSizeGraph[szi_used][sup_used ? 1 : 0] : (sup_used ? (s900_used ? graph_up_450 : s720_used ? graph_up_360 : graph_up) : (s900_used ? graph_k1h_450 : s720_used ? graph_k1h_360 : graph_k1h)) : graph).c_str(), (unsigned long long)frame, (unsigned long long)ok, (unsigned long long)fb, layer,
                         mean / 1000, pc(0.5) / 1000, pc(0.9) / 1000, v.empty() ? 0.0 : v.back() / 1000,
                         kick_late ? "late" : "early", (unsigned long long)kicks_early, (unsigned long long)kicks_late, (unsigned long long)packs,
                         int(exact_set), (unsigned long long)pipe_tails, (unsigned long long)pipe_starts, (unsigned long long)pipe_drops);
@@ -349,12 +359,15 @@ struct Bridge {
         // 1600x900 as 720p (k1h nf4_k1h_450, fused pre, input ping-pong); its own graph = its own daemon, a size change re-probes
         const bool s9 = w == 1600 && h == 900 && cw == 1920 && ch == 1080 && n9_900 && k1h_want && frame >= k1h_off_until && pre_fused && pf;
         if (s9 != s900 && layer != 1) { s900 = s9; if (layer == 2 || layer == -2) layer = 0; pend = false; }
+        // The other sizes with their own graphs, same conditions; a size change re-probes
+        const int sn = sizes_on && cw == 1920 && ch == 1080 && k1h_want && frame >= k1h_off_until && pre_fused && pf ? size_index(w, h) : -1;
+        if (sn != szi && layer != 1) { szi = sn; if (layer == 2 || layer == -2) layer = 0; pend = false; }
         // Network change (P <-> UP) = other graph = other daemon: re-probe like a size change. UP runs only as k1h (no UP
         // network-only graph), only for outputs whose UP graph exists (1080p, 900p, 720p; all on by default, VELA_NPU_UP*=0 turns one off).
         const bool nu = g_net_up.load();
         if (nu != sup && layer != 1) { sup = nu; if (layer == 2 || layer == -2) layer = 0; pend = false; }
-        const bool up_graph = !sup || ((s1080 ? up_1080 : s9 ? up_900 : s7 ? up_720 : false) && k1h_want && frame >= k1h_off_until);
-        sized = (s1080 || s7 || s9) && g_render_ok.load() && sup == nu && up_graph;
+        const bool up_graph = !sup || ((s1080 ? up_1080 : s9 ? up_900 : s7 ? up_720 : sn >= 0) && k1h_want && frame >= k1h_off_until);
+        sized = (s1080 || s7 || s9 || sn >= 0) && g_render_ok.load() && sup == nu && up_graph;
         { const uint32_t dg = uint32_t(s1080) | uint32_t(s7) << 1 | uint32_t(s9) << 2 | uint32_t(k1h_want) << 3 | uint32_t(sup) << 4 | uint32_t(nu) << 5
               | uint32_t(up_graph) << 6 | uint32_t(g_render_ok.load()) << 7 | uint32_t(sized) << 8 | uint32_t(frame < k1h_off_until) << 9 | uint32_t(pre_fused) << 10 | uint32_t(pf) << 11;
           static const bool fv_dbg = env_i("FV_DEBUG", 0) != 0; if (fv_dbg && dg != gate_dbg) { gate_dbg = dg;   // Why the NPU is on/off (one line per change); only with FV_DEBUG=1
@@ -371,7 +384,7 @@ struct Bridge {
         { const bool want = k1h_want && frame >= k1h_off_until;   // Graph follows the bound post (re-probe on a change)
           if (want != k1h && layer != 1) { k1h = want; if (layer == 2 || layer == -2) layer = 0; pend = false; } }
         if (layer == 1 && frame - probe_frame > NR) layer = 0;   // PROBE ack never came back: probe again
-        active = sized && layer == 2 && zbase && (!k1h || ppo) && s720 == s7 && (!s720 || (k1h && pp)) && s900 == s9 && (!s900 || (k1h && pp));   // 720p/900p need k1h + input ping-pong
+        active = sized && layer == 2 && zbase && (!k1h || ppo) && s720 == s7 && (!s720 || (k1h && pp)) && s900 == s9 && (!s900 || (k1h && pp)) && szi == sn && (szi < 0 || (k1h && pp));   // 720p/900p need k1h + input ping-pong
         const uint32_t ri = uint32_t(frame % NR); ring[ri].mask = 0; std::memset(mk + ri * 512, 0, 512);
         if (!active) { pend = false; return; }
         af[0] = k1h ? (k2g[0] ? k2g[0] : netg[25][0]) : 60; af[1] = k1h ? (k2g[0] ? k2g[1] : netg[25][1]) : 34; af[2] = 1; af[3] = 0;   // no unpack in k1h mode; triple 0 (OK only) = K2a
@@ -396,7 +409,7 @@ struct Bridge {
         bar(cb, CS, VK_ACCESS_SHADER_WRITE_BIT, CS | VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, RW | VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
         if (!pf_used) { xfer(cb, sadr, zbase + VkDeviceAddress(qin) * 16, 0); ++packs; }   // Fused prepass already wrote in[pf_slot]                // pack X0(N) -> HTP input (HTP(N-1) is done: WAIT above)
         bar(cb, CS, RW, CS, RW);
-        if (k1h) { k1h_frame = true; k1h_used = true; s720_used = s720; s900_used = s900; sup_used = sup; k1_addr = pend ? zbase + VkDeviceAddress(pend_oslot ? qout1 : qout) * 16 : 0; }   // K2a reads k1(N-1) there (only K2a)
+        if (k1h) { k1h_frame = true; k1h_used = true; s720_used = s720; s900_used = s900; sup_used = sup; szi_used = szi; k1_addr = pend ? zbase + VkDeviceAddress(pend_oslot ? qout1 : qout) * 16 : 0; }   // K2a reads k1(N-1) there (only K2a)
         else { xfer(cb, sadr, zbase + VkDeviceAddress(qout) * 16, 1, true);         // unpack OUT(N-1) -> region 0 (0 groups on fallback)
         bar(cb, CS, RW, CS, RW); }
         po_slot = (tsame && k1h && pend) ? pend_oslot : uint32_t((seq + 1) & 1);   // Output slot of this kick (parity of its seq, as the input slot)
@@ -451,7 +464,7 @@ struct Bridge {
         vkCmdPushConstants(cb, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0, 32, &sp);
         vkCmdDispatch(cb, 1, 1, 1);
         bar(cb, CS, VK_ACCESS_SHADER_WRITE_BIT, CS | VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, RW | VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
-        k1h_frame = true; k1h_used = true; s720_used = s720; s900_used = s900; sup_used = sup;
+        k1h_frame = true; k1h_used = true; s720_used = s720; s900_used = s900; sup_used = sup; szi_used = szi;
         k1_addr = zbase + VkDeviceAddress(tail_oslot ? qout1 : qout) * 16;
         tail_pend = false; ++pipe_tails;
         return true;

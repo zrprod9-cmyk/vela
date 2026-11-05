@@ -1,7 +1,7 @@
 # Source of the Vela NPU daemon and its checker
 
-The Vela NPU system image (`vela-npu-sysext-13.raw`, release asset, sha256
-`ac9672ba83e20d4e001261f6c22c7ba27f15d93fd9376c22b62bc4ba5e653deb`) ships two programs of ours as binaries:
+The Vela NPU system image (`vela-npu-sysext-14.raw`, release asset, sha256
+`10acba9196a7a55f712d14451ed64a20385cc5eab045744be6a63dd264392ac1`) ships two programs of ours as binaries:
 `/usr/lib64/vela-npu/fsr4npud` (the NPU daemon) and `/usr/lib64/vela-npu/fsr4npu-check` (its checker). This folder is their
 complete source and build recipe (GPL-3.0-or-later, see [Licence](#licence)). Nothing from Qualcomm is in this folder.
 

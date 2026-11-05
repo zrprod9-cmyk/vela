@@ -93,6 +93,20 @@ def policy(dev, v79_dirs=V79_DIRS):
             "note": f"Chip {name}: {NO_FSR4}"}
 
 
+def refresh(owner, v79_dirs=V79_DIRS, log=None):
+    """0.8.21: the NPU part can be installed or removed while the plugin runs. Without this the policy of the plugin's
+    start stayed: on SM8750 the NPU and FSR 4 Fast stayed off until a reboot. owner has .dev, .chip and .npu.
+    True when the policy changed."""
+    pol = policy(owner.dev, v79_dirs)
+    if pol == owner.chip:
+        return False
+    owner.chip = pol
+    owner.npu.chip = pol
+    if log:
+        log(f"Vela device: NPU part changed: {state(owner.dev, pol)}")
+    return True
+
+
 def state(dev, pol):
     """game_state["device"]"""
     return {"soc": dev.get("soc") or "unknown", "gpu": dev.get("gpu"), "npu_arch": dev.get("npu_arch"),

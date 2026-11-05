@@ -1,7 +1,7 @@
 # Vela NPU: the cDSP guest-OS listener (quic/fastrpc cdsprpcd) that fsr4npud needs.
 # It attaches to the cDSP root PD, which the kernel allows only through
 # /dev/fastrpc-cdsp-secure (root:root 0600), so it runs as root, with a reduced capability
-# set and a read-only system. Pulled in by vela-npu@.service (Wants=), stopped when unneeded.
+# set and a read-only system. Pulled in by vela-npu.service (Wants=), stopped when unneeded.
 [Unit]
 Description=Vela NPU: cDSP guest-OS listener (cdsprpcd) for fsr4npud
 # vela-npu-setup.service waits for the device node (a ConditionPathExists on it raced its creation at boot).

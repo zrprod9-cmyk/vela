@@ -156,15 +156,25 @@ class GameCheck:
             self._save()
         return found
 
-    def check(self, scan, static=False, s3_assets=True, ag_assets=True):
-        return verdict(scan, self.markers(scan) if scan.get("exe_dir") else set(), static, s3_assets, ag_assets)
+    def check(self, scan, static=False, s3_assets=True, ag_assets=True, appid=None):
+        return verdict(scan, self.markers(scan) if scan.get("exe_dir") else set(), static, s3_assets, ag_assets, appid)
 
 
 API_ORDER = ("dx12", "dx11", "vulkan", "opengl")
 API_LABEL = {"dx12": "DirectX 12", "dx11": "DirectX 11", "vulkan": "Vulkan", "opengl": "OpenGL"}
 
 
-def verdict(scan, markers, static=False, s3_assets=True, ag_assets=True):
+def is_shortcut(appid):
+    """A non-Steam shortcut in Steam's library (Heroic, Lutris ...): its appid has the top bit set, so it is at least 2^31
+    (negative when read as a signed number)."""
+    try:
+        n = int(appid)
+    except (TypeError, ValueError):
+        return False
+    return n >= 2 ** 31 or n < 0
+
+
+def verdict(scan, markers, static=False, s3_assets=True, ag_assets=True, appid=None):
     """{"kind", "reason", "api": [...], "inputs": [...], "inputs_from": "files" | "exe" | None}; pure (tested)."""
     api = [a for a in API_ORDER if a in markers]
     inputs = list(scan.get("inputs") or [])
@@ -176,7 +186,7 @@ def verdict(scan, markers, static=False, s3_assets=True, ag_assets=True):
     if scan.get("anticheat"):
         return {**out, "kind": "none", "reason": "anticheat"}
     if not scan.get("install_dir"):
-        return {**out, "kind": "none", "reason": "not_installed"}
+        return {**out, "kind": "none", "reason": "non_steam" if is_shortcut(appid) else "not_installed"}
     if static and s3_assets:
         return {**out, "kind": "static"}
     if api == ["opengl"]:

@@ -43,7 +43,27 @@ assert presets.hint(f, {"npu": {"layer_found": False}}) == {"id": "npu_missing_l
 # FSR 4 picked, the game runs, no frame through its upscaler yet (its menu): nothing to do, the card says "waiting for the first frame"
 for log in (None, {}, {"sgsr3": False}, {"sgsr3": True, "mode": "fsr4", "output": "1920x1080", "npu": None}):
     assert presets.hint(f, {"running": True, "npu": NPU_ON, "log": log}) is None, log
-assert presets.hint(f, {"running": True, "npu": NPU_ON, "log": {"sgsr3": True, "output": "1280x720"}})["id"] == "game_res"
+# 0.8.21: game_res only when the NPU does not run the game's output. A run at 1600x900 or 1600x904 that fell back for the
+# frame size names its output. Package 14 has a graph for 1600x904 (test_npu_sizes.py has the other cases)
+NPU_14 = {"layer_found": True, "service": {**NPU_ON["service"], "sizes_graph": True, "size_running": {"1600x904": True}}}
+SPIDER = {"sgsr3": True, "mode": "fsr4fast", "render": "536x304", "output": "1600x904",
+          "npu": {"state": "fallback", "reason": "size", "render": "536x304", "output": "1600x904"}}
+assert presets.hint(presets.plan("fsr4", {"model": "fsr4fast"}), {"running": True, "npu": NPU_14, "log": SPIDER}) == {
+    "id": "game_res", "got": "1600x904", "res": "1920x1080"}
+assert presets.hint(f, {"running": True, "npu": NPU_ON, "log": {"sgsr3": True, "output": "1366x768"}})["id"] == "game_res"
+# Kena (FSR 4 on the NPU at 1600x900): no hint
+KENA = {"sgsr3": True, "mode": "fsr4", "render": "533x300", "output": "1600x900", "npu": {"state": "on", "mode": "exact"}}
+NPU_900 = {"layer_found": True, "service": {"installed": True, "k1h_running": True, "k1h450_running": True, "up_graph": True,
+                                          "up_running": {"1600x900": True}}}  # 533x300 -> 1600x900 is Ultra Performance
+assert presets.hint(f, {"running": True, "npu": NPU_900, "log": KENA}) is None
+# the NPU line not printed yet: 1280x720 / 1600x900 with their graph up need nothing either
+assert presets.hint(f, {"running": True, "npu": NPU_ON, "log": {"sgsr3": True, "output": "1280x720"}}) is None
+assert presets.hint(f, {"running": True, "npu": NPU_900, "log": {"sgsr3": True, "output": "1600x900"}}) is None
+# a 1600x900 run that fell back for the frame size, and SGSR 2 at 1280x720 (no NPU): the hint stays
+assert presets.hint(f, {"running": True, "npu": NPU_900, "log": {**KENA, "npu": {"state": "fallback", "reason": "size"}}})["id"] == "game_res"
+assert presets.hint(presets.plan("fsr4", {"model": "sgsr2"}), {"running": True, "npu": NPU_ON,
+                    "log": {"sgsr3": True, "mode": "sgsr2", "output": "1280x720"}})["id"] == "game_res"
+assert presets.npu_runs(f, KENA, NPU_900, "1600x900") and not presets.npu_runs(f, SPIDER, NPU_ON, "1600x904")
 assert presets.hint(f, {"running": True, "npu": NPU_ON, "window_restart": True,
                         "log": {"sgsr3": True, "output": "1280x720"}}) == {"id": "restart_window"}
 assert presets.hint(presets.plan("static", {"model": "fsr4"}), {"dx12_choice": True, "npu": NPU_ON}) is None  # RE4: no entries
@@ -153,7 +173,7 @@ unix = os.path.join(tmp, "unix")
 write(unix, "Num RefCount Protocol Flags Type St Inode Path\n" +
       "".join(f"0: 00000002 0 10000 0001 01 1{i} @{n}\n" for i, n in enumerate(
           ["fsr4npud", "fsr4npud_nf4_k1h", "fsr4npud_nf4_k1h_360"])))
-P.npu = npu.Npu(os.path.join(assets, "npu"), home, settings, log=lambda *a: None, proc_net_unix=unix, unit_dirs=(),
+P.npu = npu.Npu(os.path.join(assets, "npu"), home, settings, log=lambda *a: None, proc_net_unix=unix,
                 systemctl=lambda: None)
 P.floor = Nop()
 P.cpu = Nop()

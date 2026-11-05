@@ -107,6 +107,15 @@ def profile(appid):
     return PROFILES.get(str(appid))
 
 
+def public(appid):
+    """The profile as the panel gets it: the backend's answer goes through json.dumps, and an "ini" keyed by tuples made it
+    fail with no reply at all, so the panel sat on Loading for that game (Cyberpunk 2077)."""
+    p = profile(appid)
+    if not p or "ini" not in p:
+        return p
+    return dict(p, ini={".".join(k): v for k, v in p["ini"].items()})
+
+
 def env_tokens(appid):
     p = profile(appid) or {}
     out = []

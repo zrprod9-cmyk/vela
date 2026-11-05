@@ -1,6 +1,6 @@
 {
   "name": "upscale",
-  "version": "0.8.20",
+  "version": "0.8.21",
   "description": "Vela, per-game upscaling: FSR 4, FSR 3 and SGSR 2 instead of the game's DLSS/FSR, picked by hand",
   "type": "module",
   "scripts": {

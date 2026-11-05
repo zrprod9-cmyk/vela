@@ -72,6 +72,32 @@ assert st["soc"] == "SM8750" and st["gpu"] == "Adreno 830" and st["npu_arch"] ==
 assert device.state(de, pe)["soc"] == "unknown"
 
 # Npu.ready(): the chip gate comes on top of the base checks; chip=None and SM8550 the same
+# 0.8.21: the NPU part installed while the plugin runs is seen at the next panel read, and removing it too
+class _Npu:
+    chip = None
+
+
+class _Owner:
+    def __init__(self, dev, chip):
+        self.dev, self.chip, self.npu = dev, chip, _Npu()
+        self.npu.chip = chip
+
+
+v79_late = os.path.join(tmp, "v79_late")
+os.makedirs(v79_late, exist_ok=True)
+ow = _Owner(d8, device.policy(d8, (v79_late,)))
+assert not ow.chip["npu"] and not ow.chip["fsr4fast"] and not device.refresh(ow, (v79_late,))
+write(os.path.join(v79_late, "nf4_k1h.bin"), b"x")
+said = []
+assert device.refresh(ow, (v79_late,), log=said.append) and said
+assert ow.chip["npu"] and ow.chip["fsr4fast"] and ow.chip["graph_dir"] == v79_late and ow.npu.chip is ow.chip
+assert not device.refresh(ow, (v79_late,))
+os.replace(os.path.join(v79_late, "nf4_k1h.bin"), os.path.join(v79_late, "nf4_k1h.old"))
+assert device.refresh(ow, (v79_late,)) and not ow.chip["npu"] and not ow.npu.chip["fsr4fast"]
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "main.py"), encoding="utf-8") as fh:
+    assert "device.refresh(self, self.v79_dirs" in fh.read()
+
+
 def npu_with(chip):
     n = npu.Npu(os.path.join(tmp, "a"), os.path.join(tmp, "h"), os.path.join(tmp, "s"), log=lambda *a: None, chip=chip)
     n.layer_found = lambda: True

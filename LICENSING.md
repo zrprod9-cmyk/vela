@@ -17,14 +17,14 @@ kept in `assets/licenses/decky-plugin-template-BSD-3-Clause.txt`.
 
 ## Vela NPU system part (`npu/`)
 
-- `vela-npu-sysext-13.raw` (sha256 `ac9672ba83e20d4e001261f6c22c7ba27f15d93fd9376c22b62bc4ba5e653deb`) contains Vela's
-  files (the daemon `fsr4npud`, the checker `fsr4npu-check`, systemd units and drop-ins, a udev rule and 7 compiled FSR 4
+- `vela-npu-sysext-14.raw` (sha256 `10acba9196a7a55f712d14451ed64a20385cc5eab045744be6a63dd264392ac1`) contains Vela's
+  files (the daemon `fsr4npud`, the checker `fsr4npu-check`, systemd units and drop-ins, a udev rule and 17 compiled FSR 4
   graphs, each for HTP v73 and HTP v79),
   quic/fastrpc (BSD-3-Clause, its text is inside the image) and the **Qualcomm AI Engine Direct SDK runtime
   2.47.0.260601**, unmodified, under the Qualcomm AI Stack License: `libQnnHtp.so`, `libQnnHtpV73Stub.so`,
   `libQnnSystem.so` (in `/usr/lib64/vela-npu`), `libQnnHtpV73Skel.so`, `libQairtHtpV73Skel.so`, `libQnnHtpV73.so`
   (in `/usr/lib/rfsa/adsp`), and its HTP v79 part: `libQnnHtpV79Stub.so` (in `/usr/lib64/vela-npu`), `libQnnHtpV79Skel.so`, `libQairtHtpV79Skel.so`, `libQnnHtpV79.so` (in `/usr/lib/rfsa/adsp`).
-- The 7 graphs are the AMD FSR 4.1.1 network (AMD's MIT licence, see `THIRD_PARTY_NOTICES.md`), compiled with Qualcomm's
+- The 17 graphs are the AMD FSR 4.1.1 network (AMD's MIT licence, see `THIRD_PARTY_NOTICES.md`), compiled with Qualcomm's
   QAIRT tools into QNN context binaries for HTP v73 (SM8550) and HTP v79 (SM8750, in `v79/`).
 - No DSP firmware file is in the image: `install-vela-npu.sh` reads `fastrpc_shell_unsigned_3`, `libc++.so.1` and
   `libc++abi.so.1` from the device's own dsp partition.

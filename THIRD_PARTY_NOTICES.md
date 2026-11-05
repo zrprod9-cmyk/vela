@@ -1,4 +1,4 @@
-# Third-party notices: Vela 0.8.18 (`vela-0.8.18.zip`, md5 6bf61d665bde0bad7434cee4d2db677b)
+# Third-party notices: Vela 0.8.21 (`vela-0.8.21.zip`, md5 b37a51f642436a86f84207522a5e3633)
 
 Every file in the release zip, who wrote it and under which licence. Licence texts are inside the zip in
 `upscale/assets/licenses/` (paths below are zip paths). "Ours" = written by the Vela developer.
@@ -13,7 +13,7 @@ Every file in the release zip, who wrote it and under which licence. Licence tex
 | — inside that DLL | | Snapdragon Game Super Resolution (SGSR 2) and our SGSR-derived kernels | Qualcomm | BSD-3-Clause | `licenses/SGSR-BSD-3-Clause-Qualcomm.txt` |
 | — inside that DLL | | FidelityFX-derived shader parts (frame-interpolation headers, FSR 2 parts upstream OptiScaler carries) | AMD FidelityFX SDK 1.1.4 | MIT | `licenses/FidelityFX-MIT.txt` |
 | — inside that DLL | | NVIDIA NGX SDK headers that upstream OptiScaler builds with | NVIDIA | NVIDIA SDK terms, as in upstream OptiScaler | not added by our patches; `fork/` holds only our patches and no NVIDIA file |
-| `upscale/assets/sgsr3/amd_fidelityfx_upscaler_vk.dll` | 9aa4f51d3fcfb6c5b2c963fa2ccba038 | FSR 4 provider for Vulkan (FSR 4.1.1 INT8 network, FSR 4 Fast, FSR 4.1.2 Lite, NPU path); contains no FSR 4.0.2 material | built by us from dvj5411/fsr4vk @391f62b + our overlay | **GPL-3.0** (fsr4vk's own code and our changes; only fsr4vk's AMD parts are MIT); AMD FSR 4.1.1 / 4.1.2 Lite shaders and weights: MIT per AMD FidelityFX SDK 2.3.0 / AMD FSR SDK 2.4.0 (`licenses/fsr4vk/AMD-FidelityFX-SDK-MIT.md`, text below); FFX API headers: AMD MIT (`licenses/fsr4vk/AMD-FidelityFX-SDK-2.0.0-MIT.md`); SR4 kernels: GPL-2.0-or-later (`licenses/fsr4-sr4-kernels-GPL-2.0-or-later.txt`, full text `licenses/GPL-2.0.txt`); Zstandard: BSD (`licenses/fsr4vk/Zstandard-BSD.txt`) | corresponding source and build steps: `provider/` in this repository (README there) |
+| `upscale/assets/sgsr3/amd_fidelityfx_upscaler_vk.dll` | d230a1208c5ad78b6ea573536d41184f | FSR 4 provider for Vulkan (FSR 4.1.1 INT8 network, FSR 4 Fast, FSR 4.1.2 Lite, NPU path); contains no FSR 4.0.2 material | built by us from dvj5411/fsr4vk @391f62b + our overlay | **GPL-3.0** (fsr4vk's own code and our changes; only fsr4vk's AMD parts are MIT); AMD FSR 4.1.1 / 4.1.2 Lite shaders and weights: MIT per AMD FidelityFX SDK 2.3.0 / AMD FSR SDK 2.4.0 (`licenses/fsr4vk/AMD-FidelityFX-SDK-MIT.md`, text below); FFX API headers: AMD MIT (`licenses/fsr4vk/AMD-FidelityFX-SDK-2.0.0-MIT.md`); SR4 kernels: GPL-2.0-or-later (`licenses/fsr4-sr4-kernels-GPL-2.0-or-later.txt`, full text `licenses/GPL-2.0.txt`); Zstandard: BSD (`licenses/fsr4vk/Zstandard-BSD.txt`) | corresponding source and build steps: `provider/` in this repository (README there) |
 | `upscale/assets/sgsr3/amd_fidelityfx_dx12.dll` | 49230ad94ed6169933cd0457501d9cb4 | AMD FidelityFX SDK 1.1.4 DX12 runtime (file version 1.0.1.41314), AMD-signed, unmodified | AMD | MIT | `licenses/FidelityFX-MIT.txt` |
 | `upscale/assets/sgsr3/OptiPatcher.asi` | 270137987e5f58b0cb371a6e38c2fedb | OptiPatcher v0.42 (44b8106, x64), unmodified | optiscaler/OptiPatcher | MIT | `licenses/OptiPatcher-MIT.txt` |
 | `upscale/assets/sgsr3/OptiScaler.ini` | 0c456787… | OptiScaler config template of the fork | OptiScaler | GPL-3.0 | as the DLL |
@@ -32,13 +32,13 @@ Every file in the release zip, who wrote it and under which licence. Licence tex
 
 ## Not in the zip: the Vela NPU system part
 
-The NPU system extension `vela-npu-sysext-13.raw` (package 13, sha256
-`ac9672ba83e20d4e001261f6c22c7ba27f15d93fd9376c22b62bc4ba5e653deb`, its own release asset, installed as
+The NPU system extension `vela-npu-sysext-14.raw` (package 14, sha256
+`10acba9196a7a55f712d14451ed64a20385cc5eab045744be6a63dd264392ac1`, its own release asset, installed as
 `armada-vela-npu.raw`) is **not** in the release zip. It contains:
 
 - `fsr4npud` (the NPU daemon) and `fsr4npu-check`: ours, GPL-3.0-or-later with a GPL-3.0 section 7 additional permission
   for the Qualcomm runtime (`LICENSING.md`);
-- the 7 FSR 4 graphs for HTP v73 and the same 7 for HTP v79: the AMD FSR 4.1.1 network (AMD's MIT licence, notice below), compiled by us with
+- the 17 FSR 4 graphs for HTP v73 and the same 17 for HTP v79: the AMD FSR 4.1.1 network (AMD's MIT licence, notice below), compiled by us with
   Qualcomm's QAIRT tools;
 - the FastRPC client and DSP listener (`cdsprpcd`, `libcdsprpc`, `libcdsp_default_listener`): quic/fastrpc `a56e9d4`,
   built from source, BSD-3-Clause, text inside the image;
@@ -50,7 +50,7 @@ reads them from the device's own dsp partition.
 
 ## Qualcomm AI Engine Direct (QNN) runtime
 
-- **Included** (only inside `vela-npu-sysext-13.raw`, never as a separate download): `libQnnHtp.so`,
+- **Included** (only inside `vela-npu-sysext-14.raw`, never as a separate download): `libQnnHtp.so`,
   `libQnnHtpV73Stub.so`, `libQnnSystem.so`, `libQnnHtpV73Skel.so`, `libQairtHtpV73Skel.so`, `libQnnHtpV73.so`,
   `libQnnHtpV79Stub.so`, `libQnnHtpV79Skel.so`, `libQairtHtpV79Skel.so`, `libQnnHtpV79.so` from the
   Qualcomm AI Engine Direct SDK (QAIRT) 2.47.0.260601, unmodified.
@@ -78,7 +78,7 @@ This provider embeds compute shaders and network weights derived from AMD softwa
   and modified by the Vela and fsr4vk projects.
 - FSR 4.1.2 Lite: captured from amd_fidelityfx_upscaler_vk.dll, AMD FSR SDK 2.4.0,
   Kits/FidelityFX/signedbin/ (commit 7539ae8b6568ad29ed78a753404351daf3b5cca7), and modified by the Vela project.
-This build contains no FSR 4.0.2 material (Vela release provider, md5 9aa4f51d3fcfb6c5b2c963fa2ccba038).
+This build contains no FSR 4.0.2 material (Vela release provider, md5 d230a1208c5ad78b6ea573536d41184f).
 AMD's SDK license (docs/license.md) lists these signed DLLs under the following license:
 
 Copyright (C) Advanced Micro Devices, Inc.

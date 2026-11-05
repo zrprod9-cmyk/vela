@@ -80,6 +80,9 @@ curl -fsSL https://github.com/zrprod9-cmyk/vela/releases/latest/download/install
 It asks for your password once and ends with `Vela NPU: OK`. Without it, FSR 4 runs on the GPU. Details and removal:
 [npu/README.md](npu/README.md).
 
+FSR 4 runs on the NPU at 1920x1080, 1600x900 and 1280x720, and at 1600x904, 1440x810, 1280x800, 1152x648 and 960x540
+(these five are experimental on Snapdragon 8 Elite). 1366x768 is not supported on the NPU.
+
 <details>
 <summary><b>Update and removal</b></summary>
 

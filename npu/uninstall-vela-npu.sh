@@ -1,12 +1,14 @@
 #!/bin/sh
 # Removes the Vela NPU system part (install-vela-npu.sh). Needs sudo once. Vela then runs FSR 4 on the GPU.
-#   curl -fsSL https://github.com/zrprod9-cmyk/vela/releases/download/v0.8.17/uninstall-vela-npu.sh | sudo sh
+#   curl -fsSL https://github.com/zrprod9-cmyk/vela/releases/download/v0.8.21/uninstall-vela-npu.sh | sudo sh
 set -u
-UNITS="vela-npu@nf4_exact.service vela-npu@nf4_k1h.service vela-npu@nf4_k1h_360.service vela-npu@nf4_k1h_450.service vela-npu@nf4up_k1h.service vela-npu@nf4up_k1h_450.service vela-npu@nf4up_k1h_360.service"
+UNIT=vela-npu.service
+# Older packages: one unit per graph, or on-demand slots.
+OLD_UNITS="vela-npu@nf4_exact.service vela-npu@nf4_k1h.service vela-npu@nf4_k1h_360.service vela-npu@nf4_k1h_450.service vela-npu@nf4up_k1h.service vela-npu@nf4up_k1h_450.service vela-npu@nf4up_k1h_360.service vela-npu-up.service"
 [ "$(id -u)" = 0 ] || { echo "Vela NPU uninstall: FAILED - run it with sudo"; exit 1; }
 echo "== stop and disable the Vela NPU services"
-systemctl stop $UNITS vela-npu-boot.service vela-npu-listener.service vela-npu-setup.service vela-npu.service 2>/dev/null || true
-systemctl disable $UNITS vela-npu-boot.service vela-npu.service >/dev/null 2>&1 || true
+systemctl stop $UNIT $OLD_UNITS "vela-npu@*.service" "vela-npu-slot@*.service" "vela-npu-slot@*.socket" vela-npu-boot.service vela-npu-listener.service vela-npu-setup.service 2>/dev/null || true
+systemctl disable $UNIT $OLD_UNITS "vela-npu-slot@*.socket" vela-npu-boot.service >/dev/null 2>&1 || true
 rm -f /etc/systemd/system/vela-npu-boot.service
 echo "== remove the two extensions (only the files the installer wrote)"
 rm -f /var/lib/extensions/armada-vela-npu.raw /var/lib/extensions/armada-vela-npu.raw.new

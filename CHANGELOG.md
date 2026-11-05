@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.21 — 2026-11-05
+
+- **FSR 4 on the NPU at five more game resolutions:** 1600x904, 1440x810, 1280x800, 1152x648 and 960x540. 960x540 has run in a game so far, the others passed the installer's check. All five are experimental on 8 Elite: not tested there yet.
+- **One NPU service instead of seven.** The NPU part (package 14) runs all its FSR 4 networks from a single service.
+- **The NPU part needs one reinstall with sudo.** In Desktop mode open Konsole and run the command the panel shows:
+  `curl -fsSL https://github.com/zrprod9-cmyk/vela/releases/latest/download/install-vela-npu.sh | sudo sh`
+  Until then package 13 keeps working at the resolutions it already had.
+- Cyberpunk 2077: the panel no longer sits on “Loading…”.
+- The panel sees the NPU part as soon as it is installed, without a restart.
+- The panel no longer asks for 1920x1080 while the NPU runs the game's resolution. If the resolution only needs a newer NPU
+  part, it says to update that instead.
+- Non-Steam shortcuts (Heroic, Lutris…) now say they are not supported yet.
+- The panel no longer asks for a report when the NPU only has no network for the game's resolution: the game runs on the GPU and the panel's hint says so.
+- Known issue: PRAGMATA crashes with Vela on, seen on 8 Elite. Play it with Vela off. The cause is not found yet.
+
 ## 0.8.20 — 2026-11-04
 
 - **Vela no longer writes into game folders.** Its files are shown to the game only while it runs (an overlay), so

@@ -23,6 +23,8 @@ LEGACY_MODELS = ("ai", "p2b", "sr", "sany", "student", "v1f", "v1")
 OUT_1080 = "1920x1080"
 OUT_720 = "1280x720"
 OUT_900 = "1600x900"
+# 0.8.21: outputs with graphs from NPU package 14 on (npu.SIZE_SOCKETS, npu.UP_SOCKETS)
+SIZE_OUTPUTS = ("1600x904", "1440x810", "1280x800", "1152x648", "960x540")
 # the game kinds (gamecheck.verdict) the panel can set up
 KINDS = ("fsr4", "sgsr2", "static")
 
@@ -72,7 +74,28 @@ def npu_graph_up(output, service, ultra=False):
         return bool(service.get("k1h360_running"))
     if output == OUT_900:
         return bool(service.get("k1h450_running"))
+    if output in SIZE_OUTPUTS:
+        return bool((service.get("size_running") or {}).get(output))
     return bool(service.get("k1h_running") or service.get("full_running"))
+
+
+# the outputs the NPU graphs run (FSR 4 and FSR 4 Fast); any other output runs FSR 4 on the GPU
+NPU_OUTPUTS = (OUT_1080, OUT_900, OUT_720) + SIZE_OUTPUTS
+
+
+def npu_runs(p, log, npu_state, output):
+    """0.8.21: FSR 4 of this game runs on the NPU, so its output size needs no change: the run says so (the fork's NPU
+    line is "on"), or, before that line, the output is one the NPU runs and its graph is up. A run that fell back for the
+    frame size (state "fallback", reason "size") does not count."""
+    if p["model"] not in FSR4_MODELS:
+        return False
+    run = (log or {}).get("npu") or {}
+    if run.get("state") == "on":
+        return True
+    if run.get("state") == "fallback" and run.get("reason") == "size":
+        return False
+    svc = (npu_state or {}).get("service")
+    return output in NPU_OUTPUTS and npu_ready(npu_state) and npu_graph_up(output, svc, is_ultra(_norm((log or {}).get("render")), output))
 
 
 def npu_ready(npu_state):
@@ -161,7 +184,11 @@ def hint(p, st):
             return {"id": "npu_install"}
         if ultra and not svc.get("up_graph") and not npu_graph_up(out, svc, True):
             return {"id": "npu_update_up"}
-        if not npu_graph_up(out, svc, ultra):
+        # 0.8.21: a size with graphs only in a newer package: update it, the resolution can stay
+        if out in SIZE_OUTPUTS and not svc.get("sizes_graph") and not npu_graph_up(out, svc, ultra):
+            return {"id": "npu_update_sizes"}
+        # an output with no graph at all runs on the GPU (game_res below): the service is judged by the screen's graph
+        if not npu_graph_up(out if out in NPU_OUTPUTS else SCREEN, svc, ultra):
             # without the Qualcomm runtime (missing = an incomplete install of the NPU image) the
             # daemons cannot start -> the installer again; a failed unit -> reboot, then reinstall; else not started yet
             if svc.get("qnn") is False:
@@ -171,6 +198,6 @@ def hint(p, st):
             return {"id": "npu_service"}
     if log.get("out_format") and p["model"] in FSR4_MODELS:
         return {"id": "out_format"}
-    if running and log.get("sgsr3") and got and got != SCREEN:
+    if running and log.get("sgsr3") and got and got != SCREEN and not npu_runs(p, log, st.get("npu"), got):
         return {"id": "game_res", "got": got, "res": SCREEN}
     return None

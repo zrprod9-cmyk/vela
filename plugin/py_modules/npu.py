@@ -2,9 +2,11 @@
 
 Three parts, two of them outside the plugin:
 - the system component: fsr4npud, a host service that holds the HTP and listens on one abstract AF_UNIX socket per
-  graph (@fsr4npud_nf4_k1h ...). Installed by the user (sysext + udev + units); a console may not have it. 0.8.15: FSR 4
-  Lite is out of Vela, so nothing here looks at the Lite daemon (socket @fsr4npud, unit vela-npu.service): "installed" and
-  "running" mean the daemons of the full FSR 4 graphs, and a console without the Lite daemon is complete.
+  graph (@fsr4npud_nf4_k1h ...). Installed by the user (sysext + udev + units); a console may not have it. 0.8.21: package
+  14 has one daemon for all graphs, unit vela-npu.service; package 13 and older have one unit per graph, and there
+  vela-npu.service is the old Lite daemon or nothing, so a graph file of package 14 tells which names apply. "installed" =
+  a socket or a graph file of the full network; "running" = a socket of the full network (the Lite socket @fsr4npud counts
+  for nothing, and a console without the Lite daemon is complete).
 - our native Vulkan layer VK_LAYER_VELA_npu: assets/npu/libVkLayer_VELA_npu.so. Its
   manifest goes to the user's implicit layer dir (~/.local/share/vulkan/implicit_layer.d, which pressure-vessel imports
   into the game's container) with the plugin's .so as an absolute path; it loads only with VELA_NPU=1 in the game's
@@ -28,45 +30,50 @@ LIB = "libVkLayer_VELA_npu.so"
 MANIFEST = "VkLayer_VELA_npu.json"
 ENABLE_ENV = ("VELA_NPU", "1")
 DISABLE_ENV = ("DISABLE_VELA_NPU", "1")
-# 0.8.3: the full FSR 4.1.1 network (graph nf4_exact) has its own daemon: package v3 unit vela-npu@nf4_exact.service,
-# socket @fsr4npud_nf4_exact (the layer picks it from the provider's PROBE, VELA_NPU_F_GRAPH)
+# 0.8.21: package 14: one daemon holds the sockets of all graphs
+UNIT = "vela-npu.service"
+# 0.8.3: the full FSR 4.1.1 network, graph nf4_exact, socket @fsr4npud_nf4_exact (the layer picks it from the provider's PROBE,
+# VELA_NPU_F_GRAPH)
 FULL_SOCKET = "fsr4npud_nf4_exact"
-FULL_UNIT = "vela-npu@nf4_exact.service"
-# 0.8.5: the 1080p performance preset runs the network + postpass K1 graph nf4_k1h (package v5 unit vela-npu@nf4_k1h.service,
-# socket @fsr4npud_nf4_k1h); the other presets keep nf4_exact. Either daemon listening = the full model can use the NPU.
+FULL_UNIT = UNIT
+# 0.8.5: the 1080p performance preset runs the network + postpass K1 graph nf4_k1h; the other presets keep nf4_exact. Either
+# socket listening = the full model can use the NPU.
 K1H_SOCKET = "fsr4npud_nf4_k1h"
-K1H_UNIT = "vela-npu@nf4_k1h.service"
-# 0.8.7 / 0.8.9: 1280x720 output runs graph nf4_k1h_360 (sysext v7 unit vela-npu@nf4_k1h_360.service); the panel's
-# 720p mode asks for this daemon by name
+K1H_UNIT = UNIT
+# 0.8.7 / 0.8.9: 1280x720 output runs graph nf4_k1h_360; the panel's 720p mode asks for this socket by name
 K1H360_SOCKET = "fsr4npud_nf4_k1h_360"
-K1H360_UNIT = "vela-npu@nf4_k1h_360.service"
-# 0.8.9: 1600x900 output runs graph nf4_k1h_450 (sysext v8 unit vela-npu@nf4_k1h_450.service). The graph file
-# tells v8 from v7 (an instance of the template unit has no file of its own in the unit dirs)
+K1H360_UNIT = UNIT
+# 0.8.9: 1600x900 output runs graph nf4_k1h_450. The graph file tells package v8 from v7
 K1H450_SOCKET = "fsr4npud_nf4_k1h_450"
-K1H450_UNIT = "vela-npu@nf4_k1h_450.service"
+K1H450_UNIT = UNIT
+# the same units on package 13 and older (one instance per graph): such a console keeps working until the player updates
+OLD_UNITS = {"full_unit": "vela-npu@nf4_exact.service", "k1h_unit": "vela-npu@nf4_k1h.service",
+             "k1h360_unit": "vela-npu@nf4_k1h_360.service", "k1h450_unit": "vela-npu@nf4_k1h_450.service"}
 GRAPH_DIR = "/usr/lib64/vela-npu"
 K1H450_GRAPH = "nf4_k1h_450.bin"
-# 0.8.14: FSR 4 Ultra Performance (render 1/3 of the window) runs its own graphs nf4up_k1h / _450 / _360 (sysext v9 units
-# vela-npu@nf4up_k1h*.service, sockets fsr4npud_nf4up_k1h*). The graph file tells v9 from v8.
-UP_SOCKETS = {"1920x1080": "fsr4npud_nf4up_k1h", "1600x900": "fsr4npud_nf4up_k1h_450", "1280x720": "fsr4npud_nf4up_k1h_360"}
+# 0.8.14: FSR 4 Ultra Performance (render 1/3 of the window) runs its own graphs nf4up_k1h / _450 / _360 (sockets
+# fsr4npud_nf4up_k1h*). The graph file tells v9 from v8.
+# 0.8.21: package 14 adds 1600x904, 1440x810, 1280x800, 1152x648 and 960x540 (socket and graph named by the real rows)
+UP_SOCKETS = {"1920x1080": "fsr4npud_nf4up_k1h", "1600x900": "fsr4npud_nf4up_k1h_450", "1280x720": "fsr4npud_nf4up_k1h_360",
+              "1600x904": "fsr4npud_nf4up_k1h_452", "1440x810": "fsr4npud_nf4up_k1h_405", "1280x800": "fsr4npud_nf4up_k1h_400",
+              "1152x648": "fsr4npud_nf4up_k1h_324", "960x540": "fsr4npud_nf4up_k1h_270"}
 UP_GRAPH = "nf4up_k1h.bin"
-# 0.8.15: the full FSR 4 daemons, by their sockets (in /proc/net/unix as "@<name>"): the graph of each preset / output / Ultra
-# Performance. The list is what "the NPU is there" means; the Lite daemon (@fsr4npud) is not in it.
-FULL_SOCKETS = (FULL_SOCKET, K1H_SOCKET, K1H360_SOCKET, K1H450_SOCKET) + tuple(UP_SOCKETS.values())
-# the units that hold them: sysext v9 and v10 one instance per graph (template vela-npu@.service; v10 = v9 minus
-# the Lite daemon vela-npu.service + vela-npu@nf4up_k1h_360 enabled, 7 daemons); the multi-graph daemons (vela-npu.service,
-# vela-npu-up.service) are a v11 candidate, not shipped. A unit file of the template or the UP daemon says the component is
-# installed (vela-npu.service alone is not a sign: in v9 it is the Lite daemon)
-TEMPLATE_UNIT = "vela-npu@.service"
-UP_UNIT = "vela-npu-up.service"
+# 0.8.21: the Performance graphs of those sizes. A graph file tells package 14 from 13.
+SIZE_SOCKETS = {"1600x904": "fsr4npud_nf4_k1h_452", "1440x810": "fsr4npud_nf4_k1h_405", "1280x800": "fsr4npud_nf4_k1h_400",
+                "1152x648": "fsr4npud_nf4_k1h_324", "960x540": "fsr4npud_nf4_k1h_270"}
+SIZES_GRAPH = "nf4_k1h_452.bin"
+# 0.8.15: the full FSR 4 graphs, by their sockets (in /proc/net/unix as "@<name>"): the graph of each preset / output / Ultra
+# Performance. The list is what "the NPU is there" means; the Lite socket (@fsr4npud) is not in it.
+FULL_SOCKETS = (FULL_SOCKET, K1H_SOCKET, K1H360_SOCKET, K1H450_SOCKET) + tuple(UP_SOCKETS.values()) + tuple(SIZE_SOCKETS.values())
+UP_UNIT = UNIT
 # the graph files of the full network (sysext: GRAPH_DIR); any of them = the component is installed
 # the Qualcomm QNN runtime; missing = an incomplete install (the public image carries it)
 QNN_LIB = "libQnnHtp.so"
-FULL_GRAPHS = ("nf4_exact.bin", "nf4_k1h.bin", "nf4_k1h_360.bin", K1H450_GRAPH, UP_GRAPH)
-# systemctl is asked for these, in this order, when no full daemon listens (the reason for the panel)
-STATE_UNITS = (K1H_UNIT, "vela-npu.service", UP_UNIT)
-UNIT_DIRS = ("/etc/systemd/system", "/run/systemd/system", "/usr/local/lib/systemd/system", "/usr/lib/systemd/system",
-             "/lib/systemd/system")
+FULL_GRAPHS = ("nf4_exact.bin", "nf4_k1h.bin", "nf4_k1h_360.bin", K1H450_GRAPH, UP_GRAPH, SIZES_GRAPH)
+# systemctl is asked for these, in this order, when no full daemon listens (the reason for the panel). It prints "inactive" even
+# for a unit it does not know, so the first one asked decides: package 14 asks the one daemon; package 13 and older must not
+# ask vela-npu.service, or their failed unit reads "inactive" (or the old Lite daemon "active"), and start at the second
+STATE_UNITS = (UNIT, OLD_UNITS["k1h_unit"])
 MODES = (0, 1, 2)              # live key npu: off, exact (same output, no extra latency), async (+1 frame)
 CACHE_S = 30.0
 LOG_TAIL = 256 * 1024
@@ -143,20 +150,19 @@ def socket_listening(proc_net_unix="/proc/net/unix", name=K1H_SOCKET):
         return False
 
 
-def unit_installed(dirs=UNIT_DIRS, unit=TEMPLATE_UNIT):
-    return any(os.path.exists(os.path.join(d, unit)) for d in dirs)
-
-
-def unit_active(unit=K1H_UNIT):
+def unit_active(unit=UNIT):
+    # 0.8.21: with the unit really failed the panel read no state at all: Decky's process runs under FEX with its own
+    # library path, and 1 s was short for that. The same clean environment as report.py; the cause is not proven yet.
+    env = {k: v for k, v in os.environ.items() if k not in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONHOME", "PYTHONPATH")}
     try:
-        r = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=1.0)
+        r = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=3.0, env=env)
         return r.stdout.strip() or None  # "active", "inactive", "failed", "activating"
     except (OSError, subprocess.SubprocessError):
         return None
 
 
 class Npu:
-    def __init__(self, assets_dir, home, settings_dir, log=print, proc_net_unix="/proc/net/unix", unit_dirs=UNIT_DIRS,
+    def __init__(self, assets_dir, home, settings_dir, log=print, proc_net_unix="/proc/net/unix",
                  systemctl=unit_active, graph_dir=GRAPH_DIR, chip=None):
         self.assets = assets_dir                  # <plugin>/assets/npu
         # 0.8.16: device.policy() of this console's chip; None = no chip gate (behaves as on SM8550)
@@ -166,7 +172,6 @@ class Npu:
         self.layer_dir = os.path.join(home, ".local", "share", "vulkan", "implicit_layer.d")
         self.log = log
         self._proc = proc_net_unix
-        self._unit_dirs = unit_dirs
         self._systemctl = systemctl
         self._graph_dir = graph_dir
         self._svc = None
@@ -177,29 +182,33 @@ class Npu:
     def service(self, fresh=False):
         now = time.monotonic()
         if self._svc is None or fresh or now - self._svc_at > CACHE_S:
-            # 0.8.15: the full FSR 4 daemons only. running = one of them listens; installed = one does, or the
-            # template / UP unit or a graph file of the full network is on the system (the Lite daemon counts for nothing)
+            # 0.8.15: the full FSR 4 graphs only. running = a socket of them listens; installed = one does, or a graph file of
+            # the full network is on the system. A unit file says nothing: vela-npu.service alone is the old Lite daemon.
             running = any(socket_listening(self._proc, s) for s in FULL_SOCKETS)
-            units = any(unit_installed(self._unit_dirs, u) for u in (TEMPLATE_UNIT, UP_UNIT))
             graphs = any(os.path.isfile(os.path.join(self._graph_dir, g)) for g in FULL_GRAPHS)
-            installed = running or units or graphs
+            installed = running or graphs
+            # 0.8.21: a graph file of package 14 tells whose unit names apply
+            pkg14 = os.path.isfile(os.path.join(self._graph_dir, SIZES_GRAPH))
+            units = dict.fromkeys(OLD_UNITS, UNIT) if pkg14 else OLD_UNITS
             # systemctl only when the component is there and no daemon listens: the reason for the panel
-            state = "active" if running else self._unit_state() if installed else None
+            state = "active" if running else self._unit_state(pkg14) if installed else None
             self._svc = {"installed": installed, "running": running, "unit_state": state,
                          "qnn": running or os.path.isfile(os.path.join(self._graph_dir, QNN_LIB)),
-                         "full_running": socket_listening(self._proc, FULL_SOCKET) or socket_listening(self._proc, K1H_SOCKET), "full_unit": FULL_UNIT,
-                         "k1h_running": socket_listening(self._proc, K1H_SOCKET), "k1h_unit": K1H_UNIT,
-                         "k1h360_running": socket_listening(self._proc, K1H360_SOCKET), "k1h360_unit": K1H360_UNIT,
-                         "k1h450_running": socket_listening(self._proc, K1H450_SOCKET), "k1h450_unit": K1H450_UNIT,
+                         "full_running": socket_listening(self._proc, FULL_SOCKET) or socket_listening(self._proc, K1H_SOCKET),
+                         "k1h_running": socket_listening(self._proc, K1H_SOCKET),
+                         "k1h360_running": socket_listening(self._proc, K1H360_SOCKET),
+                         "k1h450_running": socket_listening(self._proc, K1H450_SOCKET),
                          "k1h450_graph": os.path.isfile(os.path.join(self._graph_dir, K1H450_GRAPH)),
                          "up_graph": os.path.isfile(os.path.join(self._graph_dir, UP_GRAPH)),
-                         "up_running": {o: socket_listening(self._proc, s) for o, s in UP_SOCKETS.items()}}
+                         "up_running": {o: socket_listening(self._proc, s) for o, s in UP_SOCKETS.items()},
+                         **units, "sizes_graph": pkg14,
+                         "size_running": {o: socket_listening(self._proc, s) for o, s in SIZE_SOCKETS.items()}}
             self._svc_at = now
         return dict(self._svc)
 
-    def _unit_state(self):
-        """What systemctl says about the first of STATE_UNITS it knows (None when it knows none)."""
-        for u in STATE_UNITS:
+    def _unit_state(self, pkg14=True):
+        """What systemctl says about the first of the installed package's STATE_UNITS it answers for (None: no answer)."""
+        for u in STATE_UNITS if pkg14 else STATE_UNITS[1:]:
             state = self._systemctl(u)
             if state:
                 return state

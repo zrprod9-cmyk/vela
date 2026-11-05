@@ -4,7 +4,7 @@ Base: [justradical/Sloptiscaler](https://github.com/justradical/Sloptiscaler) co
 = ARM64EC build of [OptiScaler](https://github.com/optiscaler/OptiScaler) 10.0.0.1 with an SGSR 2 backend.
 Our changes are the patches in `patches/`, applied in number order. License: GPL-3.0 (`LICENSE`, OptiScaler's).
 
-The `OptiScaler.dll` in Vela 0.8.20 (md5 `48a888ee9ccb654f527d368fcf2623c3`, 18 479 616 bytes) was built from the base +
+The `OptiScaler.dll` in Vela 0.8.21 (md5 `48a888ee9ccb654f527d368fcf2623c3`, 18 479 616 bytes) was built from the base +
 **0001–0008 and 0010–0021** (patch 0009 and the experimental upstream-sync patch 0000 are not part of this build and are not
 included). Checksums of the patch files: `patches.md5`.
 
@@ -44,7 +44,7 @@ Pinned inputs:
 
 ### Reproducing the release DLL
 
-The `OptiScaler.dll` of Vela 0.8.20 (md5 `48a888ee9ccb654f527d368fcf2623c3`) is this build with
+The `OptiScaler.dll` of Vela 0.8.21 (md5 `48a888ee9ccb654f527d368fcf2623c3`) is this build with
 
     FORK_BUILD_DATE=2026-11-02 sh fork/build/build.sh out
 

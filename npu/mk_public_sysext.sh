@@ -1,7 +1,7 @@
 #!/bin/sh
-# Builds the Vela NPU system part, package 13: the systemd system extension vela-npu-sysext-13.raw.
-# Contents: the NPU daemon fsr4npud and its checker, the 7 FSR 4 graphs for HTP v73 (Snapdragon 8 Gen 2, SM8550) and the same
-# 7 graphs built for HTP v79 (Snapdragon 8 Elite, SM8750; in v79/), quic/fastrpc (commit a56e9d4, BSD-3-Clause, built from
+# Builds the Vela NPU system part, package 14: the systemd system extension vela-npu-sysext-14.raw.
+# Contents: the NPU daemon fsr4npud and its checker, the 17 FSR 4 graphs for HTP v73 (Snapdragon 8 Gen 2, SM8550) and the same
+# 17 graphs built for HTP v79 (Snapdragon 8 Elite, SM8750; in v79/), quic/fastrpc (commit a56e9d4, BSD-3-Clause, built from
 # source), the systemd units (units/ next to this script), two drop-ins that pick the v79 graphs on SM8750 (units/ next to this script), the udev rule,
 # modules-load, extension-release, notices, and the Qualcomm AI Engine Direct (QNN) runtime 2.47.0.260601 (10 files: host part,
 # HTP v73 and HTP v79 parts, unmodified, each sha256-checked) with Qualcomm's licence and Notice File (unchanged).
@@ -19,8 +19,8 @@
 #   FASTRPC_STAGE  quic/fastrpc install tree: lib/libcdsprpc.so.1.0.0, lib/libcdsp_default_listener.so.1.0.0, sbin/cdsprpcd
 #   FASTRPC_SRC    quic/fastrpc source checkout (LICENSE.txt);  FASTRPC_COMMIT_FILE: a file "<repo> <commit>"
 #   NPUD_BIN       fsr4npud.stripped and fsr4npu-check
-#   GRAPHS         the 7 graphs nf4_exact.bin ... nf4up_k1h_360.bin (HTP v73)
-#   GRAPHS_V79     the same 7 file names, built for HTP v79
+#   GRAPHS         the 17 graphs nf4_exact.bin ... nf4up_k1h_270.bin (HTP v73)
+#   GRAPHS_V79     the same 17 file names, built for HTP v79
 #   (not an input: the units, the udev rule, modules-load and the two drop-ins are units/ next to this script)
 #   QAIRT          the unpacked Qualcomm AI Engine Direct SDK 2.47.0.260601 (lib/..., LICENSE.pdf, QNN_NOTICE.txt)
 #   PAYLOAD_MD5    md5 list of the payload ("<md5>  ./usr/..."): the files tested on the SM8550 device, the v79 graphs,
@@ -31,7 +31,7 @@
 #     registry.fedoraproject.org/fedora:44 sh /npu/mk_public_sysext.sh
 set -e
 umask 022
-VER=13
+VER=14
 EPOCH=1761955200   # 2025-11-01 00:00 UTC
 SYSLIB=/usr/lib64/vela-npu
 dnf -y -q install squashfs-tools patchelf binutils >/dev/null 2>&1
@@ -55,7 +55,7 @@ QNN_NAMES="libQnnHtp.so libQnnHtpV73Stub.so libQnnSystem.so libQnnHtpV73Skel.so 
 G79=${GRAPHS_V79:?}; DROPIN=$P
 T=$(mktemp -d /tmp/velapub.XXXXXX); chmod 0755 $T
 L=$T$SYSLIB; D=$T/usr/share/licenses/armada-vela-npu
-mkdir -p $L $L/v79 $T/usr/bin $T/usr/lib/udev/rules.d $T/usr/lib/systemd/system/vela-npu-setup.service.d $T/usr/lib/systemd/system/vela-npu@.service.d $T/usr/lib/extension-release.d $T/usr/lib/modules-load.d $T/usr/lib/rfsa/adsp $D
+mkdir -p $L $L/v79 $T/usr/bin $T/usr/lib/udev/rules.d $T/usr/lib/systemd/system/vela-npu-setup.service.d $T/usr/lib/systemd/system/vela-npu.service.d $T/usr/lib/extension-release.d $T/usr/lib/modules-load.d $T/usr/lib/rfsa/adsp $D
 install -m 0755 $FR/lib/libcdsprpc.so.1.0.0 $FR/lib/libcdsp_default_listener.so.1.0.0 $L/
 ln -s libcdsprpc.so.1.0.0 $L/libcdsprpc.so.1; ln -s libcdsprpc.so.1 $L/libcdsprpc.so
 ln -s libcdsp_default_listener.so.1.0.0 $L/libcdsp_default_listener.so.1; ln -s libcdsp_default_listener.so.1 $L/libcdsp_default_listener.so
@@ -63,8 +63,9 @@ install -m 0755 $FR/sbin/cdsprpcd $L/cdsprpcd
 install -m 0755 $NB/fsr4npud.stripped $L/fsr4npud
 install -m 0755 $NB/fsr4npu-check $L/fsr4npu-check
 ln -s ../lib64/vela-npu/fsr4npu-check $T/usr/bin/fsr4npu-check
-for u in nf4_exact nf4_k1h nf4_k1h_360 nf4_k1h_450 nf4up_k1h nf4up_k1h_450 nf4up_k1h_360; do install -m 0644 $G/$u.bin $L/$u.bin; done
-for u in nf4_exact nf4_k1h nf4_k1h_360 nf4_k1h_450 nf4up_k1h nf4up_k1h_450 nf4up_k1h_360; do install -m 0644 $G79/$u.bin $L/v79/$u.bin; done
+GRAPH_LIST="nf4_k1h nf4_k1h_360 nf4_k1h_450 nf4up_k1h nf4up_k1h_450 nf4up_k1h_360 nf4_exact nf4_k1h_452 nf4up_k1h_452 nf4_k1h_405 nf4up_k1h_405 nf4_k1h_400 nf4up_k1h_400 nf4_k1h_324 nf4up_k1h_324 nf4_k1h_270 nf4up_k1h_270"
+for u in $GRAPH_LIST; do install -m 0644 $G/$u.bin $L/$u.bin; done
+for u in $GRAPH_LIST; do install -m 0644 $G79/$u.bin $L/v79/$u.bin; done
 # the Qualcomm runtime: host libraries 0755 (as on the tested device), DSP-side skels 0644; each sha256-checked
 echo "$QNN_FILES" | while read -r sha dst src; do
   case $dst in usr/lib64/*) m=0755;; *) m=0644;; esac
@@ -73,11 +74,11 @@ echo "$QNN_FILES" | while read -r sha dst src; do
   echo "qnn sha256 ok $dst"
 done
 install -m 0644 $P/70-vela-npu.rules $T/usr/lib/udev/rules.d/70-vela-npu.rules
-install -m 0644 $P/vela-npu@.service $P/vela-npu-listener.service $P/vela-npu-setup.service $T/usr/lib/systemd/system/
+install -m 0644 $P/vela-npu.service $P/vela-npu-listener.service $P/vela-npu-setup.service $T/usr/lib/systemd/system/
 install -m 0644 $P/vela-npu.conf $T/usr/lib/modules-load.d/vela-npu.conf
-# SM8750: the setup unit links /run/vela-npu/graphs to v79/, each daemon gets its v79 graph mounted over the --ctx path
+# SM8750: the setup unit links /run/vela-npu/graphs to v79/, the daemon gets each v79 graph mounted over its path in --graph-dir
 install -m 0644 $DROPIN/vela-npu-setup-chip.conf $T/usr/lib/systemd/system/vela-npu-setup.service.d/50-vela-npu-chip.conf
-install -m 0644 $DROPIN/vela-npu@-chip.conf $T/usr/lib/systemd/system/vela-npu@.service.d/50-vela-npu-chip.conf
+install -m 0644 $DROPIN/vela-npu-chip.conf $T/usr/lib/systemd/system/vela-npu.service.d/50-vela-npu-chip.conf
 install -m 0644 $FSRC/LICENSE.txt $D/fastrpc-BSD-3-Clause.txt
 # AI Stack License s2(b) keep notices, s10(h) "must not remove or alter any such Notice File": the SDK's
 # LICENSE.pdf and QNN_NOTICE.txt ship UNCHANGED next to the runtime (sha256-checked; name of the PDF as ORT's Qualcomm_LICENSE.pdf)
@@ -90,7 +91,7 @@ echo "$QLIC_FILES" | while read -r sha src dst; do
 done
 cat > $D/README.txt <<R
 Vela NPU system part, package $VER (public image).
-Ours: fsr4npud, fsr4npu-check (the NPU daemon and its checker), the 7 FSR 4 graphs nf4*.bin (HTP v73, Snapdragon 8 Gen 2 SM8550)
+Ours: fsr4npud, fsr4npu-check (the NPU daemon and its checker), the 17 FSR 4 graphs nf4*.bin (HTP v73, Snapdragon 8 Gen 2 SM8550)
 and v79/nf4*.bin (the same graphs for HTP v79, Snapdragon 8 Elite SM8750), the systemd units and drop-ins, the udev rule.
 quic/fastrpc (BSD-3-Clause, fastrpc-BSD-3-Clause.txt): cdsprpcd, libcdsprpc, libcdsp_default_listener, built from source.
 Qualcomm AI Engine Direct SDK runtime $QAIRT_VER, redistributed by the Vela author, unmodified:
@@ -111,7 +112,8 @@ ARCHITECTURE=arm64
 # Not used by systemd-sysext: what is inside.
 X_VELA_NPU_PACKAGE=$VER
 X_VELA_NPU_PART=base + Qualcomm QNN runtime (public r2; the device's DSP shell: extension armada-vela-npu-qnn)
-X_VELA_NPU_GRAPHS=nf4_exact nf4_k1h nf4_k1h_360 nf4_k1h_450 nf4up_k1h nf4up_k1h_450 nf4up_k1h_360
+X_VELA_NPU_GRAPHS=nf4_k1h nf4_k1h_360 nf4_k1h_450 nf4up_k1h nf4up_k1h_450 nf4up_k1h_360 nf4_exact nf4_k1h_452 nf4up_k1h_452 nf4_k1h_405 nf4up_k1h_405 nf4_k1h_400 nf4up_k1h_400 nf4_k1h_324 nf4up_k1h_324 nf4_k1h_270 nf4up_k1h_270
+X_VELA_NPU_UNIT=vela-npu.service
 X_VELA_NPU_CHIPS=SM8550 (HTP v73) SM8750 (HTP v79, graphs in v79/)
 X_VELA_NPU_QAIRT=$QAIRT_VER
 X_VELA_NPU_FASTRPC=$(cut -d' ' -f2 $FCOMMIT)

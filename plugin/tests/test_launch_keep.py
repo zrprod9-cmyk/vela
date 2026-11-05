@@ -84,7 +84,7 @@ def plugin(service=True):
     P.cfg = gamecfg.GameCfg(settings, log=lambda *a: None)
     P.live = live.Live(settings, log=lambda *a: None)
     P.npu = npu.Npu(os.path.join(assets, "npu"), home, settings, log=lambda *a: None,
-                    proc_net_unix=unix if service else os.path.join(tmp, "nounix"), unit_dirs=(), systemctl=lambda: None)
+                    proc_net_unix=unix if service else os.path.join(tmp, "nounix"), systemctl=lambda: None)
     P.floor = Nop()
     P.cpu = Nop()
     P.check = gamecheck.GameCheck(settings, log=lambda *a: None)

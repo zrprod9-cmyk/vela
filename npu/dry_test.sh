@@ -3,13 +3,13 @@
 # for the device's dsp partition and a stand-in device-tree compatible. Checks that the installer needs no Qualcomm SDK,
 # detects the chip, stages the DSP files (another device's own copies with a warning), refuses an unsupported chip and a
 # wrong image (sha256).
-# Inputs: IMG (vela-npu-sysext-13.raw), DSP_TREE (the extracted file tree of the device's dsp partition),
+# Inputs: IMG (vela-npu-sysext-14.raw), DSP_TREE (the extracted file tree of the device's dsp partition),
 # COMPATIBLE (the device-tree compatible list, space-separated; default "retroidpocket,rp6 qcom,qcs8550 qcom,sm8550"),
 # optional PAYLOAD_MD5 (md5 list of the tested NPU package, "<md5>  ./usr/..."): the merged file set is compared with it.
-#   docker run --rm -v <repo>/npu:/npu -v <inputs>:/in -e IMG=/in/vela-npu-sysext-13.raw -e DSP_TREE=/in/dsp \
+#   docker run --rm -v <repo>/npu:/npu -v <inputs>:/in -e IMG=/in/vela-npu-sysext-14.raw -e DSP_TREE=/in/dsp \
 #     registry.fedoraproject.org/fedora:44 sh /npu/dry_test.sh
 HERE=$(cd "$(dirname "$0")" && pwd)
-IMG=${IMG:?path to vela-npu-sysext-13.raw}
+IMG=${IMG:?path to vela-npu-sysext-14.raw}
 DSP_TREE=${DSP_TREE:?extracted dsp partition tree}
 dnf -y -q install e2fsprogs util-linux systemd udev squashfs-tools >/dev/null 2>&1
 mkdir -p /home/armada/Downloads
