@@ -1,0 +1,33 @@
+[20:26:20.381473] [I]  Upscalers.Dx11Upscaler: sgsr2_12
+[20:26:20.381482] [I]  Upscalers.Dx12Upscaler: sgsr3
+[20:26:20.695191] [I] hkD3D12CreateDevice Adapter Desc: Turnip Adreno (TM) 740
+[20:26:22.372362] [I] CreateSwapChainForHwnd Failed to get ID3D12CommandQueue from pDevice, creating Dx11 swapchain!
+[20:26:22.381833] [I] WrappedIDXGISwapChain4 1 created, real: 5FFE2B0, refCount: 1
+[20:26:23.279647] [I] NVSDK_NGX_D3D11_Init_Ext AppId: 100437611
+[20:26:25.780217] [I] NVSDK_NGX_D3D11_CreateFeature HandleId: 1000000
+[20:26:25.780322] [I] NVSDK_NGX_D3D11_CreateFeature Adreno GPU, defaulting to SGSR2 over the Dx11/Dx12 bridge
+[20:26:25.780347] [I] NVSDK_NGX_D3D11_CreateFeature Creating new ???? feature
+[20:26:26.061459] [I] GetD3D12DeviceFromD3D11 D3D12 interop device created on D3D11 adapter: Turnip Adreno (TM) 740
+[20:26:26.186450] [I] InitInternal Initializing SGSR2 682x512 -> 1024x768
+[20:26:29.654380] [I] CreateSwapChainForHwnd Failed to get ID3D12CommandQueue from pDevice, creating Dx11 swapchain!
+[20:26:29.827412] [I] WrappedIDXGISwapChain4 2 created, real: 52787FF0, refCount: 1
+[20:27:59.978968] [I] NVSDK_NGX_D3D11_ReleaseFeature releasing feature with id 1000000
+[20:28:00.480939] [I] NVSDK_NGX_D3D11_CreateFeature HandleId: 1000001
+[20:28:00.481070] [I] NVSDK_NGX_D3D11_CreateFeature Adreno GPU, defaulting to SGSR2 over the Dx11/Dx12 bridge
+[20:28:00.481096] [I] NVSDK_NGX_D3D11_CreateFeature Creating new ???? feature
+[20:28:00.481987] [I] InitInternal Initializing SGSR2 341x192 -> 1024x576
+[20:28:29.311425] [I] NVSDK_NGX_D3D11_ReleaseFeature releasing feature with id 1000001
+[20:28:29.812921] [I] NVSDK_NGX_D3D11_CreateFeature HandleId: 1000002
+[20:28:29.813042] [I] NVSDK_NGX_D3D11_CreateFeature Adreno GPU, defaulting to SGSR2 over the Dx11/Dx12 bridge
+[20:28:29.813071] [I] NVSDK_NGX_D3D11_CreateFeature Creating new ???? feature
+[20:28:29.813785] [I] InitInternal Initializing SGSR2 426x240 -> 1280x720
+[20:31:32.641746] [I] NVSDK_NGX_D3D11_ReleaseFeature releasing feature with id 1000002
+[20:31:33.144870] [I] NVSDK_NGX_D3D11_CreateFeature HandleId: 1000003
+[20:31:33.144993] [I] NVSDK_NGX_D3D11_CreateFeature Adreno GPU, defaulting to SGSR2 over the Dx11/Dx12 bridge
+[20:31:33.145019] [I] NVSDK_NGX_D3D11_CreateFeature Creating new ???? feature
+[20:31:33.146091] [I] InitInternal Initializing SGSR2 640x360 -> 1280x720
+[20:32:59.475157] [I] NVSDK_NGX_D3D11_ReleaseFeature releasing feature with id 1000003
+[20:32:59.977190] [I] NVSDK_NGX_D3D11_CreateFeature HandleId: 1000004
+[20:32:59.977319] [I] NVSDK_NGX_D3D11_CreateFeature Adreno GPU, defaulting to SGSR2 over the Dx11/Dx12 bridge
+[20:32:59.977345] [I] NVSDK_NGX_D3D11_CreateFeature Creating new ???? feature
+[20:32:59.978113] [I] InitInternal Initializing SGSR2 752x423 -> 1280x720

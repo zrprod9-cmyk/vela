@@ -85,6 +85,48 @@ def ini_set(text, section, key, value):
     return text, False
 
 
+def _eol(text):
+    return "\r\n" if text.count("\r\n") > text.count("\n") / 2 else "\n"
+
+
+def ini_add(text, section, key, value):
+    """key=value into [section] for an entry marked "add" (a key the file does not have and the game reads when it is
+    there, e.g. Unreal's DefaultGraphicsRHI): after the section's last line, or with a new section at the end."""
+    eol = _eol(text)
+    lines = text.splitlines(True)
+    bodies = [l.rstrip("\r\n") for l in lines]
+    start, end = _ini_bounds(bodies, section)
+    line = f"{key}={value}{eol}"
+    if start is None:
+        head = text if not text or text.endswith(("\n", "\r")) else text + eol
+        return head + f"{eol}[{section}]{eol}{line}"
+    last = max(i for i in range(start, end) if bodies[i].strip())
+    if not lines[last].endswith(("\n", "\r")):
+        lines[last] += eol
+    lines.insert(last + 1, line)
+    return "".join(lines)
+
+
+def ini_remove(text, section, key):
+    """Takes out a line ini_add put in; a section left with no lines goes with it (and the blank line before it)."""
+    lines = text.splitlines(True)
+    bodies = [l.rstrip("\r\n") for l in lines]
+    start, end = _ini_bounds(bodies, section)
+    if start is None:
+        return text
+    rx = re.compile(rf"^\s*{re.escape(key)}\s*=", re.I)
+    hit = next((i for i in range(start + 1, end) if rx.match(bodies[i])), None)
+    if hit is None:
+        return text
+    del lines[hit], bodies[hit]
+    end -= 1
+    if not any(bodies[i].strip() for i in range(start + 1, end)):
+        del lines[start:end]
+        if start > 0 and not lines[start - 1].strip():
+            del lines[start - 1]
+    return "".join(lines)
+
+
 def _str(v):
     return ("true" if v else "false") if isinstance(v, bool) else str(v)
 
@@ -143,7 +185,15 @@ class GameCfg:
             pass
 
     def _resolve(self, appid, install_dir, e):
-        root = prefix_user(install_dir, appid, getattr(self, "home", None)) if e.get("root") == "prefix" else install_dir
+        if e.get("root") == "prefix":
+            # a launcher's game keeps its prefix where the launcher made it (learned while the game ran, learn.py)
+            pfx = self.prefix_of(appid) if getattr(self, "prefix_of", None) else None
+            root = os.path.join(pfx, "drive_c", "users", "steamuser") if pfx \
+                else prefix_user(install_dir, appid, getattr(self, "home", None))
+        elif e.get("root") == "abs":
+            return e["file"]  # a path found on this device (sgsr3.dx12_cfg)
+        else:
+            root = install_dir
         return os.path.join(root, e["file"])
 
     @staticmethod
@@ -165,6 +215,10 @@ class GameCfg:
         for k, v in (f.get("want") or {}).items():
             cur = ini_get(new, f["section"], k) if ini else get_key(new, k)
             if cur is None:
+                if ini and f.get("add") and not restore:
+                    # an "add" entry: the line goes in, and Off takes exactly that line out again (orig None = was absent)
+                    orig.setdefault(k, None)
+                    new = ini_add(new, f["section"], k, v)
                 continue  # the key is not in the file: the game's own default, untouched
             if not restore:
                 when = (f.get("when") or {}).get(k)
@@ -178,6 +232,9 @@ class GameCfg:
         # Vela's key and the player's anti-aliasing stayed changed, FIN3 2026-11-03). Their values are noted in the pass that takes Vela's
         # first key (never later: by then the game may have rewritten them); Off puts a key back only when it holds one of the game's
         # values and held another before, so a value the player picked himself meanwhile stays.
+        if restore and ini:
+            for k in f.get("remove") or ():
+                new = ini_remove(new, f["section"], k)
         follow = f.get("follow") or {}
         ofollow = dict(f.get("orig_follow") or {})
         if follow and not restore and orig and not had and not ofollow:
@@ -213,6 +270,8 @@ class GameCfg:
                  "section": e.get("section"), "want": dict(e["keys"]), "when": dict(e.get("when") or {}), "orig": {}}
             if e.get("follow"):  # FLW: only profiles that have it carry the field, so the state of every other game stays as it was
                 f["follow"] = {k: list(v) for k, v in e["follow"].items()}
+            if e.get("add"):
+                f["add"] = True
             out.append(f)
         return out
 
@@ -251,8 +310,9 @@ class GameCfg:
         st = self.read(appid)
         if st is None:
             return None
-        files = [{**f, "want": {k: v for k, v in (f.get("orig") or {}).items() if v is not None}} for f in st["files"]
-                 if f.get("orig")]
+        files = [{**f, "want": {k: v for k, v in (f.get("orig") or {}).items() if v is not None},
+                  "remove": [k for k, v in (f.get("orig") or {}).items() if v is None and f.get("add")]}
+                 for f in st["files"] if f.get("orig")]
         self._write(appid, {"files": files, "pending": True, "off": True})
         self.reconcile(set() if not running else {appid}, only=appid)
         return self.status(appid)

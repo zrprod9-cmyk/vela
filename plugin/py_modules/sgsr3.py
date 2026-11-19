@@ -30,6 +30,7 @@ import shutil
 import time
 
 import launchopts
+import learn
 import velakit
 import npu
 import presets
@@ -279,6 +280,39 @@ FG_TU_ENV = "TU_AUTOTUNE_FLAGS=preempt_optimize"
 ALGO_ENV = {"v1f": None, "v1": V1_ENV, "student": STUDENT_ENV}
 OUR_TOKENS = (DLL_OVERRIDE, STUDENT_ENV, V1_ENV, FG_ENV, FG_TU_ENV) + profiles.ENV_TOKENS + profiles.EXTRA_ENV_TOKENS
 DX12_ARG = "-dx12"
+# Unreal reads its graphics API from the user's Engine.ini too: for a launcher's game, where a launch argument cannot
+# reach the game (it would go to the launcher), this is how Vela asks for DirectX 12 (seen with Ghostrunner under Heroic,
+# 2026-11-16: started in DX11 with -dx12 on the launcher's command line, in DX12 with this key)
+UE_RHI = {"section": "/Script/WindowsTargetPlatform.WindowsTargetSettings",
+          "keys": {"DefaultGraphicsRHI": "DefaultGraphicsRHI_DX12"}}
+UE_CONFIG_DIRS = ("WindowsNoEditor", "Windows", "WindowsClient")
+
+
+def ue_engine_ini(prefix, exe):
+    """The Engine.ini an Unreal game reads its own settings from in a Wine prefix:
+    <prefix>/drive_c/users/<user>/AppData/Local/<Project>/Saved/Config/<Windows...>/Engine.ini, the project named by the
+    exe (<Project>-Win64-Shipping.exe). None when the game has not made that folder (it never ran) or names it otherwise."""
+    project = re.sub(r"-(win64|wingdk)-shipping\.exe$", "", exe or "", flags=re.I)
+    if not prefix or not project or project == exe:
+        return None
+    users = os.path.join(prefix, "drive_c", "users")
+    try:
+        names = sorted(os.listdir(users))
+    except OSError:
+        return None
+    for user in names:
+        local = os.path.join(users, user, "AppData", "Local")
+        try:
+            match = next((n for n in os.listdir(local) if n.lower() == project.lower()), None)
+        except OSError:
+            continue
+        if not match:
+            continue
+        for sub in UE_CONFIG_DIRS:
+            d = os.path.join(local, match, "Saved", "Config", sub)
+            if os.path.isfile(os.path.join(d, "GameUserSettings.ini")) or os.path.isfile(os.path.join(d, "Engine.ini")):
+                return os.path.join(d, "Engine.ini")
+    return None
 # 0.8.17: the panel could not read Steam's launch options: nothing is set up or undone on a guess
 NOT_READ = "Steam did not give this game's launch options, nothing was changed: try again"
 # 0.8.15: Bright Memory: Infinite (1178830): a game's own Steam launch entries (appinfo: config/launch/<n>/
@@ -650,8 +684,31 @@ def shortcuts(home):
                 if not isinstance(low.get("appid"), int):
                     continue
                 out.append({"appid": str(low["appid"] & 0xFFFFFFFF), "name": str(low.get("appname") or ""),
-                            "exe": _unquote(low.get("exe")), "start_dir": _unquote(low.get("startdir"))})
+                            "exe": _unquote(low.get("exe")), "start_dir": _unquote(low.get("startdir")),
+                            "options": str(low.get("launchoptions") or "")})
     return out
+
+
+def shortcut_entry(home, appid):
+    """The shortcut's own record (shortcuts()), or None."""
+    try:
+        want = str(int(appid) & 0xFFFFFFFF)
+    except (TypeError, ValueError):
+        return None
+    return next((sc for sc in shortcuts(home) if sc["appid"] == want), None)
+
+
+# Vela's own words in a shortcut's launch options: they come and go with Vela and are not part of what the shortcut starts
+_RX_SIG_OURS = re.compile(r"(?:^|(?<=\s))(?:\S*vela-launch|(?:VELA|OPTI_SGSR3?|RECON)_[A-Z0-9_]*=\S*|"
+                          r"WINEDLLOVERRIDES=\S*|VKD3D_[A-Z_]+=\S*|LP0_ENABLE=\S*|-dx1[12]|-d3d1[12]|%command%)(?=\s|$)")
+
+
+def shortcut_sig(sc):
+    """What the shortcut starts: its program and its own launch options (Vela's tokens left out). A game learned for the
+    shortcut (learn.py) holds only while this is the same."""
+    if not sc:
+        return None
+    return sc["exe"] + "|" + " ".join(_RX_SIG_OURS.sub(" ", sc.get("options") or "").split())
 
 
 def _inside(path, folder):
@@ -1001,15 +1058,19 @@ _RX_FSR4 = re.compile(r"Vela FSR 4 VK: FSR ([\d.]+(?: Lite)?) VK INT8 context \d
 _DX11_SWAPCHAIN = "creating Dx11 swapchain"
 _DX11_SIGNS = ("NVSDK_NGX_D3D11_Init",)
 _DX12_SIGNS = ("NVSDK_NGX_D3D12_Init",)
+# the game created its DLSS feature on D3D11: OptiScaler's Dx11Upscaler made it (SGSR 2 on the D3D12 bridge). A DX12 game
+# never writes this line (Crysis Remastered under Heroic, report 2026-11-17: FSR 4 Fast picked, "switching" for ever)
+_DX11_BRIDGE = "NVSDK_NGX_D3D11_CreateFeature"
 # FSR 4's provider refused the game's output texture (ffx error 6 = output format; R9G9B9E5 is handled by the fork since
 # patch 0021, so a line now means another format)
 _RX_OUT_FORMAT = re.compile(r"ffxDispatch failed \(6\)|provider needs[^\n]*format")
 
 
 def run_api(text, created):
-    """"dx11" when the run used DirectX 11 and no upscaler of Vela's was created, else None."""
+    """"dx11" when the run used DirectX 11: no upscaler of Vela's was created, or the one created came through the game's
+    D3D11 feature (SGSR 2 on the bridge, whatever model was picked); else None."""
     if created:
-        return None
+        return "dx11" if _DX11_BRIDGE in text else None
     if _DX11_SWAPCHAIN in text:
         return "dx11"
     if any(k in text for k in _DX12_SIGNS):
@@ -1147,6 +1208,7 @@ class Sgsr3:
         self.probe = None       # fn(exe_dir, work, scratch) -> (ok, why); None: velakit.probe_game
         self._probes = {}       # appid -> (time, overlay works)
         self._stamps = {}       # V14: appid -> {kit file path: (size, mtime_ns) | None} as refresh_dll left them
+        self.learned = learn.Store(settings_dir, log=log)  # games of launcher shortcuts, learned while they run
         try:
             with open(os.path.join(assets_dir, "VERSION.json"), encoding="utf-8") as f:
                 self.version = json.load(f)
@@ -1169,13 +1231,67 @@ class Sgsr3:
             name = n if native else name
         res = {"appid": appid, "install_dir": root or native, "name": name, "engine": "", "exe_dir": None, "exe": None,
                "inputs": [], "anticheat": [ANTICHEAT_APPIDS[appid]] if appid in ANTICHEAT_APPIDS else []}
-        if root:
+        known = self._learned_game(appid, root) if is_shortcut(appid) else None
+        if known:
+            # a launcher's shortcut (Heroic, Xodus Nexus, a store client in a prefix): the game folder it was seen to run
+            entry, sc = known
+            root = entry["install_dir"]
+            res.update({"install_dir": root, "name": (sc or {}).get("name") or name or os.path.basename(root)})
             res.update(scan_dir(root, appid))
+            exe = os.path.join(root, entry["exe"])  # the exe that ran, not the biggest one in the folder
+            res.update({"exe_dir": os.path.dirname(exe), "exe": os.path.basename(exe)})
+            res["learned"] = {"folder": os.path.basename(root), "confirmed": bool(entry.get("confirmed")),
+                              "prefix": entry.get("prefix"), "markers": entry.get("markers"),
+                              "by_steam": bool(sc and sc["exe"].lower().endswith(".exe"))}
+            if entry.get("machine"):
+                res["machine"] = entry["machine"]
+        elif root:
+            res.update(scan_dir(root, appid))
+        elif is_shortcut(appid) and getattr(self, "learned", None) is not None:
+            sc = shortcut_entry(self.home, appid)
+            if sc and not sc["exe"].lower().endswith(".exe"):
+                # nothing learned yet: a launcher's game that has not run with the panel open, a launcher itself, or a
+                # Linux program (an emulator): gamecheck words each
+                e = self.learned.entry(appid) or {}
+                same = e.get("sig") in (None, shortcut_sig(sc))
+                res["pending"] = "launcher" if same and e.get("launcher") else "native" if same and e.get("native") \
+                    else "start_once"
         if is_shortcut(appid):
             profiles.link_shortcut(appid, res["exe"])  # 0.8.22: a shortcut of a profiled game gets that game's profile
         res["anticheat"] = anticheat_labels(res["anticheat"], appinfo_anticheat(self.home, appid))
         self.cache[appid] = (time.time(), res)
         return res
+
+    @staticmethod
+    def _launcher_game(sc):
+        """The game is started by a launcher, not by Steam's own Proton (a learned shortcut that is no Windows exe)."""
+        return (sc.get("learned") or {}).get("by_steam") is False
+
+    def dx12_cfg(self, appid):
+        """The settings-file entry (gamecfg) that makes a launcher's Unreal game start in DirectX 12, or None."""
+        sc = self.scan(appid)
+        if not self._launcher_game(sc) or sc.get("engine") != "Unreal":
+            return None
+        path = ue_engine_ini(sc["learned"].get("prefix"), sc.get("exe"))
+        if not path:
+            return None
+        return {"root": "abs", "file": path, "format": "ini", "add": True, **UE_RHI}
+
+    def _learned_game(self, appid, root):
+        """(learned entry, shortcut) when the shortcut's game is known from a running launch, else None. A shortcut
+        straight to the game's own exe needs no learning: its folder is found from shortcuts.vdf as before."""
+        store = getattr(self, "learned", None)
+        if store is None:
+            return None
+        sc = shortcut_entry(self.home, appid)
+        entry = store.get(appid, shortcut_sig(sc))
+        if not entry:
+            return None
+        if root and sc:
+            ran = os.path.join(entry["install_dir"], entry["exe"])
+            if os.path.normcase(os.path.realpath(sc["exe"])) == os.path.normcase(os.path.realpath(ran)):
+                return None
+        return entry, sc
 
     def _md5(self, path):
         try:
@@ -1244,6 +1360,11 @@ class Sgsr3:
             # command; the files go into the game folder and Vela's variables in front, which works with it
             return "copy"
         sc = self.scan(appid)
+        if (sc.get("learned") or {}).get("by_steam") is False:
+            # the launcher starts the game, not Steam: the overlay around Steam's command cannot hold it (an AppImage
+            # launcher does not start inside bwrap, and a launcher that is already open starts the game outside it;
+            # seen 2026-11-16). The files go into the game folder, which every launcher's game reads
+            return "copy"
         if not sc["exe_dir"] or not self.overlay_ok(appid, sc):
             return "copy"
         if self.new_mode == "wrapper" and isinstance(launch_options, str) and \
@@ -1427,10 +1548,21 @@ class Sgsr3:
         """The run log: in an overlay setup OptiScaler writes it into the kit's folder (LogFileName); the interceptor, and
         a copy setup, next to the game's exe."""
         if not self._is_kit(d):
-            return os.path.join(d, kit["log"])
+            return (None if kit["static"] else self._ini_log(d)) or os.path.join(d, kit["log"])
         if kit["static"]:
             return os.path.join((self.read_state(d) or {}).get("exe_dir") or d, kit["log"])
         return os.path.join(os.path.dirname(d), kit["log"])
+
+    @staticmethod
+    def _ini_log(d):
+        """The log file a copy setup's OptiScaler.ini names by its full path (a launcher's game, _ini_text), as a Linux
+        path; None when the ini leaves the log next to the exe."""
+        try:
+            with open(os.path.join(d, "OptiScaler.ini"), encoding="utf-8", errors="replace") as f:
+                m = re.search(r"^LogFileName=Z:(\\\S.*)$", f.read(), re.M)
+        except OSError:
+            return None
+        return m.group(1).strip().replace("\\", "/") if m else None
 
     def kit(self, appid):
         """What goes into the game folder: OptiScaler (files, assets) or, for a static_fsr2 profile, the
@@ -1707,6 +1839,11 @@ class Sgsr3:
 
     def _ini_text(self, sc, opts, d=None):
         extra = {"log_file": wine_path(os.path.join(os.path.dirname(d), "OptiScaler.log"))} if self._is_kit(d) else {}
+        if not extra and sc.get("learned"):
+            # a launcher may run the game from a temporary copy of its exe folder (Xodus Nexus): a log "next to the exe"
+            # would be written there and deleted with it. It goes to Vela's own folder instead
+            os.makedirs(self.logs_dir, exist_ok=True)
+            extra = {"log_file": wine_path(os.path.join(self.logs_dir, f"{sc['appid']}-OptiScaler.log"))}
         with open(os.path.join(self.assets, "OptiScaler.ini"), encoding="utf-8", newline="") as f:
             return make_ini(f.read(), {**opts, "appid": sc["appid"], "exe": sc.get("exe"), "fsr_pattern": fsr_pattern(sc),
                                        "fsr4_driver": self.fsr4_driver(), **extra})
@@ -1953,7 +2090,9 @@ class Sgsr3:
             # "game" ratio: the fork takes amax from the real sizes itself
             amax = [f"OPTI_SGSR3_AMAX={amax_str(clean['ratio'])}"] \
                 if AMAX_BY_RATIO and clean["algo"] == "student" and clean["ratio"] != "game" else []
-            new_launch, rec = launch_build(launch_options, rec, clean["algo"], sc["engine"] == "Unreal",
+            # a launcher's game: -dx12 on Steam's options would go to the launcher, not the game (dx12_cfg sets it)
+            new_launch, rec = launch_build(launch_options, rec, clean["algo"],
+                                           sc["engine"] == "Unreal" and not self._launcher_game(sc),
                                            profiles.env_tokens(appid) + amax +
                                            (smooth_env(clean["smooth"]) if clean["algo"] == "v1f" else []),
                                            bool(self.api_args(appid)))
