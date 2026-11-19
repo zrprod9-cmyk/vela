@@ -169,8 +169,11 @@ def hint(p, st):
     dx11_run = log.get("sgsr3") and log.get("mode") == "sgsr2" and p["model"] != "sgsr2"
     # 0.8.20: the last run was DirectX 11 (OptiScaler's lines): the game's DX12 entry when Steam offers one, else its setting.
     # No -dx12 is added here: Vela adds it only for Unreal games without their own API entries (sgsr3.launch_build)
-    if p["kind"] != "static" and log.get("api") == "dx11":
+    if p["kind"] != "static" and log.get("api") == "dx11" and not log.get("sgsr3"):
         return {"id": "dx12_choice"} if st.get("dx12_choice") else {"id": "dx11_run"}
+    # the DX11 run got SGSR 2 through OptiScaler's bridge: the model picked cannot start there (never "switching")
+    if p["kind"] != "static" and log.get("api") == "dx11" and p["model"] != "sgsr2":
+        return {"id": "dx12_choice"} if st.get("dx12_choice") else {"id": "dx11_sgsr2"}
     if p["kind"] != "static" and st.get("dx12_choice") and (not log.get("sgsr3") or dx11_run):
         return {"id": "dx12_choice"}
     if p["model"] in FSR4_MODELS:

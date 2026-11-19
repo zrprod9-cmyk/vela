@@ -143,7 +143,13 @@ class GameCfg:
             pass
 
     def _resolve(self, appid, install_dir, e):
-        root = prefix_user(install_dir, appid, getattr(self, "home", None)) if e.get("root") == "prefix" else install_dir
+        if e.get("root") == "prefix":
+            # a launcher's game keeps its prefix where the launcher made it (learned while the game ran, learn.py)
+            pfx = self.prefix_of(appid) if getattr(self, "prefix_of", None) else None
+            root = os.path.join(pfx, "drive_c", "users", "steamuser") if pfx \
+                else prefix_user(install_dir, appid, getattr(self, "home", None))
+        else:
+            root = install_dir
         return os.path.join(root, e["file"])
 
     @staticmethod
