@@ -8,7 +8,8 @@ gives the exe, the engine, the input libraries and anti-cheat):
   inputs  the game's own temporal upscaler: an input DLL (sgsr3.INPUT_LIBS) or, with none, FSR / DLSS / XeSS
           symbols inside the binary (OptiScaler's pattern search then finds a static FSR)
   block   anti-cheat, not installed, no Windows exe (native Linux game), OpenGL only, a Godot game (0.8.16: its FSR 2
-          is the engine's own Vulkan code, sgsr3.godot_signs)
+          is the engine's own Vulkan code, sgsr3.godot_signs), a 32-bit game, a launcher's shortcut whose game has not
+          been seen running yet ("start_once") or that opens the launcher itself ("launcher"; learn.py)
 
 kind (what the panel's modes run, presets.py):
   fsr4    DX12 + an input: our OptiScaler fork, FSR 4 / SGSR 2 / Vela AI live (the fsr4vk provider needs vkd3d)
@@ -154,10 +155,22 @@ class GameCheck:
                 pass
         if dirty:
             self._save()
+        seen = (scan.get("learned") or {}).get("markers")
+        if seen and not _is_pe(os.path.join(d or "", scan.get("exe") or "")):
+            # a launcher keeps the exe encrypted on disk (Xodus Nexus): what was read from the copy that ran
+            found |= set(seen)
         return found
 
     def check(self, scan, static=False, s3_assets=True, ag_assets=True, appid=None):
         return verdict(scan, self.markers(scan) if scan.get("exe_dir") else set(), static, s3_assets, ag_assets, appid)
+
+
+def _is_pe(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read(2) == b"MZ"
+    except OSError:
+        return False
 
 
 API_ORDER = ("dx12", "dx11", "vulkan", "opengl")
@@ -185,6 +198,13 @@ def verdict(scan, markers, static=False, s3_assets=True, ag_assets=True, appid=N
     out = {"api": api, "inputs": inputs, "inputs_from": inputs_from, "reason": None}
     if scan.get("anticheat"):
         return {**out, "kind": "none", "reason": "anticheat"}
+    if scan.get("pending") in ("start_once", "launcher", "native"):
+        # a shortcut to a program that is not a Windows exe (learn.py): a launcher's game is learned while it runs
+        # ("start_once"); the shortcut opens the launcher itself ("launcher"); it ran and no Windows game came up
+        # ("no_windows": an emulator, or a launcher that stopped on an error before the game)
+        return {**out, "kind": "none", "reason": "no_windows" if scan["pending"] == "native" else scan["pending"]}
+    if scan.get("machine") == "x86":
+        return {**out, "kind": "none", "reason": "x86"}  # Vela's libraries are 64-bit: a 32-bit game cannot load them
     if not scan.get("install_dir"):
         return {**out, "kind": "none", "reason": "non_steam" if is_shortcut(appid) else "not_installed"}
     if static and s3_assets:

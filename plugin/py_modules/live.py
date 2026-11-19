@@ -78,6 +78,42 @@ class Live:
     def __init__(self, settings, log=print):
         self.dir = os.path.join(settings, "live")
         self.log = log
+        self.mirrors = {}  # the id a running game reads its file by -> the appid whose settings it must get
+
+    # A launcher's runtime may hide the shortcut's appid from the game (Heroic sets SteamAppId=0): Vela's library then
+    # reads /tmp/vela-live/0.ini, not <appid>.ini. While such a game runs, its file is kept under that id as well.
+
+    def mirror(self, appid, run_id):
+        """The running game `appid` reads its live file as <run_id>.ini: write it there too, and keep it in step."""
+        appid, run_id = str(appid), str(run_id)
+        if not run_id.isdigit() or run_id == appid or self.mirrors.get(run_id) == appid:
+            return False
+        self.mirrors[run_id] = appid
+        self._write_mirror(run_id, self.get(appid))
+        self.log(f"live {appid}: the game reads its settings as {run_id}.ini, kept there while it runs")
+        return True
+
+    def unmirror(self, keep=()):
+        """Drops the copies of games that no longer run (keep: the appids that still do)."""
+        for run_id, appid in list(self.mirrors.items()):
+            if appid not in keep:
+                del self.mirrors[run_id]
+                self._write_mirror(run_id, None)
+
+    def _write_mirror(self, run_id, values):
+        path = os.path.join(TMP_DIR, f"{run_id}.ini")
+        try:
+            if not values:
+                if os.path.exists(path):
+                    os.remove(path)
+                return
+            os.makedirs(TMP_DIR, exist_ok=True)
+            tmp = path + ".new"
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write("".join(f"{k}={v}\n" for k, v in sorted(values.items())))
+            os.replace(tmp, path)
+        except OSError as e:
+            self.log(f"live mirror {run_id}: {e}")
 
     def _json(self, appid):
         return os.path.join(self.dir, f"{appid}.json")
@@ -163,6 +199,11 @@ class Live:
             f.write(text)
         os.replace(tmp, path)
 
+    def _sync_mirrors(self, appid, values):
+        for run_id, owner in self.mirrors.items():
+            if owner == str(appid):
+                self._write_mirror(run_id, values)
+
     def set(self, appid, patch):
         """Merge the panel's change (a key with None goes away), store it and hand it to the game. Returns the values."""
         values = self.get(appid)
@@ -180,6 +221,7 @@ class Live:
         elif os.path.exists(self._json(appid)):
             os.remove(self._json(appid))
         self._write_tmp(appid, values)
+        self._sync_mirrors(appid, values)
         self.log(f"live {appid}: {values or 'launch settings'}")
         return values
 

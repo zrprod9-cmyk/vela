@@ -30,7 +30,20 @@ with open(dx12, "w", encoding="utf-8") as f:
             "[I] Initializing SGSR3 1280x720 -> 1920x1080\n")
 s12 = sgsr3.log_summary(dx12)
 assert s12["api"] is None and presets.hint(p, {"log": s12, "npu": {}}) != {"id": "dx11_run"}, s12
-assert sgsr3.run_api("creating Dx11 swapchain", True) is None, "an upscaler was created: not a DX11 verdict"
+assert sgsr3.run_api("creating Dx11 swapchain", True) is None, "an upscaler was created: the swapchain line alone is no verdict"
+
+# a DX11 game whose DLSS feature OptiScaler's bridge took: SGSR 2 runs whatever model was picked (Crysis Remastered under
+# Heroic, player report 2026-11-17: FSR 4 Fast picked, the panel said "switches in a few seconds" for ever)
+BRIDGE = os.path.join(HERE, "fixtures", "dx11_bridge_sgsr2_optiscaler.log")
+sb = sgsr3.log_summary(BRIDGE)
+assert sb["api"] == "dx11" and sb["sgsr3"] and sb["mode"] == "sgsr2" and sb["output"] == "1280x720", sb
+fast = {"kind": "fsr4", "model": "fsr4fast"}
+assert presets.hint(fast, {"log": sb, "running": True}) == {"id": "dx11_sgsr2"}
+assert presets.hint({"kind": "fsr4", "model": "fsr3"}, {"log": sb}) == {"id": "dx11_sgsr2"}
+assert presets.hint(fast, {"log": sb, "dx12_choice": True}) == {"id": "dx12_choice"}, "Steam's DX12 entry first"
+assert presets.hint({"kind": "fsr4", "model": "sgsr2"}, {"log": sb}) is None, "SGSR 2 picked: it runs, nothing to do"
+assert presets.hint({"kind": "sgsr2", "model": "sgsr2"}, {"log": sb, "dx12_choice": True}) is None
+assert report.assess(open(BRIDGE, encoding="utf-8").read(), sb)["dx11"]
 
 # FSR 4 refused the output format (ffx error 6): its own hint
 with open(dx12, "a", encoding="utf-8") as f:
