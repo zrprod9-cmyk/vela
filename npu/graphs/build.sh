@@ -1,11 +1,11 @@
 #!/bin/bash
-# Build Vela NPU graphs (HTP context binaries for v73 and v79) in Docker.
+# Build Vela NPU graphs (HTP context binaries for v73, v79 and v81) in Docker.
 #
 #   QAIRT_DIR=<qairt>/2.47.0.260601 FSR4VK_DIR=<fsr4vk checkout> OUT_DIR=<output> ./build.sh [all | <file> ...]
 #
 # QAIRT_DIR   the unpacked Qualcomm AI Engine Direct SDK version folder (contains bin/ and lib/), mounted read-only
 # FSR4VK_DIR  a checkout of https://github.com/dvj5411/fsr4vk at 391f62bd198ac9a289aba8ee0d4396db2104f3a2, mounted read-only
-# OUT_DIR     receives v73/<file>.bin and v79/<file>.bin
+# OUT_DIR     receives v73/<file>.bin, v79/<file>.bin and v81/<file>.bin
 # WORK_DIR    build folders and logs, one per graph (default: $OUT_DIR/work)
 # IMAGE       Docker image built from ./Dockerfile (default: vela-qnn)
 # CPUS, MEM   container limits (default: 4, 8g)
@@ -26,6 +26,6 @@ for G in "$@"; do
   MSYS_NO_PATHCONV=1 docker run --rm --cpus "$CPUS" -m "$MEM" \
     -v "$HERE:/src:ro" -v "$QAIRT_DIR:/qairt:ro" -v "$FSR4VK_DIR:/fsr4vk:ro" -v "$WORK_DIR:/v" -v "$OUT_DIR:/out" \
     -e G="$G" "$IMAGE" bash /src/build_graph.sh 2>&1 | tee "$WORK_DIR/$G.log"
-  grep -q "^CTX v73/" "$WORK_DIR/$G.log" && grep -q "^CTX v79/" "$WORK_DIR/$G.log" || { echo "$G: FAILED"; fail=1; }
+  grep -q "^CTX v73/" "$WORK_DIR/$G.log" && grep -q "^CTX v79/" "$WORK_DIR/$G.log" && grep -q "^CTX v81/" "$WORK_DIR/$G.log" || { echo "$G: FAILED"; fail=1; }
 done
 exit $fail

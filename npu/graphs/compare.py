@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Compare built graphs with the package-14 hashes in expected.sha256.
-Usage: python3 compare.py OUT_DIR   (OUT_DIR holds v73/*.bin and v79/*.bin, as build.sh writes them).
+Usage: python3 compare.py OUT_DIR   (OUT_DIR holds v73/*.bin, v79/*.bin and v81/*.bin, as build.sh writes them).
 Exit code 1 if any built file differs; files not built are listed and do not fail."""
 import hashlib, os, sys
 here = os.path.dirname(os.path.abspath(__file__)); out = sys.argv[1]; ok = bad = miss = 0

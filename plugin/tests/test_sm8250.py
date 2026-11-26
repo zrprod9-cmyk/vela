@@ -43,11 +43,11 @@ for dev, name in ((d5, "SM8250"), (device.detect(os.path.join(tmp, "none")), "un
     assert any("FSR 4" in u and NOTE in u for u in p["unavailable"]), p
     st = device.state(dev, p)
     assert st["fsr4"] is False and st["fsr4fast"] is False, st
-# SM8550 / SM8750 keep FSR 4
-for soc in ("SM8550", "SM8750"):
-    p = device.policy({"soc": soc}, ())
+# SM8550 / SM8750 / SM8850 keep FSR 4
+for soc in ("SM8550", "SM8750", "SM8850"):
+    p = device.policy({"soc": soc}, (), ())
     assert p["fsr4"] and device.state({"soc": soc}, p)["fsr4"], (soc, p)
-assert device.policy({"soc": "SM8550"}, ())["fsr4fast"] and not device.policy({"soc": "SM8750"}, ())["fsr4fast"]
+assert device.policy({"soc": "SM8550"}, ())["fsr4fast"] and not device.policy({"soc": "SM8750"}, ())["fsr4fast"] and device.policy({"soc": "SM8850"}, (), ())["fsr4fast"]
 
 # the plugin (fake decky module, no __init__ run)
 dk = types.ModuleType("decky")

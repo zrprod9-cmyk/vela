@@ -256,10 +256,10 @@ qnn-model-lib-generator -c $m.cpp -b $m.bin -l $m -t x86_64-linux-clang -o libs
 
 The x86 library is the input for both chips. The v73 and v79 files of one graph are made from the same `lib$m.so`.
 
-### 3.3 Context binary for HTP v73 and v79
+### 3.3 Context binary for HTP v73, v79 and v81
 
 ```sh
-for a in "v73 43" "v79 69"; do set -- $a      # dsp_arch, soc_model (43 = SM8550, 69 = SM8750)
+for a in "v73 43" "v79 69" "v81 87"; do set -- $a      # dsp_arch, soc_model (43 = SM8550, 69 = SM8750, 87 = SM8850)
   cat > htp_$1.json <<EOF
 {"graphs": [{"graph_names": ["$m"], "vtcm_mb": 8, "O": 3}], "devices": [{"soc_model": $2, "dsp_arch": "$1"}]}
 EOF
@@ -272,6 +272,7 @@ EOF
 done
 # -> ctx/v73/$G.bin  (package path usr/lib64/vela-npu/$G.bin)
 # -> ctx/v79/$G.bin  (package path usr/lib64/vela-npu/v79/$G.bin)
+# -> ctx/v81/$G.bin  (package path usr/lib64/vela-npu/v81/$G.bin)
 ```
 
 Backend settings used for every shipped graph:
@@ -432,7 +433,27 @@ On v79 the 1080p graphs plan less traffic (spill/fill about 21.1–21.2 MB). The
   native v75 build (`soc_model 57`, `dsp_arch v75` in `htp.json`) of `nf4_k1h`, `nf4_k1h_400` and `nf4_k1h_324` gets the
   same compiler plan as v73 (same spill/fill bytes), the same output hashes and the same NPU time on the device
   (`fsr4npu-check` NPU execute p50, v73 / v75: 4.64 / 4.65 ms, 2.25 / 2.24 ms, 2.42 / 2.37 ms), so no v75 graph set is shipped.
-- **Other chips:** our notes cover only v73 (SM8550), v75 (SM8650) and v79 (SM8750). For another Hexagon generation you would change
+- **HTP v81 (Snapdragon 8 Elite Gen 5, SM8850 / Kaanapali / Canoe):** same model library as v73/v79, with the QAIRT 2.47.0.260601
+  HTP v81 runtime (`libQnnHtpV81Stub.so`, `libQnnHtpV81Skel.so`, `libQairtHtpV81Skel.so`, `libQnnHtpV81.so`). On a real SM8850P
+  device (Lenovo Legion Y700 Gen 5 running HyperOS 4, `CANOEP`, `soc_id 661`, Android 17 / QAIRT 2.47.0.260601 unsigned PD,
+  `turbo` DCVS+HMX, 20 runs each with `fsr4npu_check` fixed input & FNV-1a-64 check formula):
+
+  | graph | build | binary bytes | spillFillBufferSize | rc | runs bit-exact | check hash | min / p50 / max ms |
+  |---|---|---|---|---|---|---|---|
+  | `nf4_k1h` | `v73` E-BS (`socModel 43`, `dspArch 73`) | 1,564,672 | 16,842,752 (16.84 MB) | 0x0 | 20 / 20 | `8a735e657feee21f` (ref match) | 3.21 / 3.23 / 4.44 |
+  | `nf4_k1h` | `v79` E-BS (`socModel 69`, `dspArch 79`) | 1,564,672 | 14,548,992 (14.55 MB) | 0x0 | 20 / 20 | `8a735e657feee21f` (ref match) | 2.91 / 2.93 / 3.64 |
+  | `nf4_k1h` | `v81` E-BS (`socModel 87`, `dspArch 81`) | 1,822,720 | 13,762,560 (13.76 MB) | 0x0 | 20 / 20 | `8a735e657feee21f` (ref match) | 2.76 / 2.77 / 3.56 (-14.2%) |
+  | `nf4up_k1h` | `v73` E-BS | 1,593,344 | — | 0x0 | 20 / 20 | `60a3d9ad466fca76` (ref match) | 3.04 / 3.05 / 3.77 |
+  | `nf4up_k1h` | `v79` E-BS | 1,581,056 | — | 0x0 | 20 / 20 | `60a3d9ad466fca76` (ref match) | 2.82 / 2.84 / 3.53 |
+  | `nf4up_k1h` | `v81` E-BS | 1,839,104 | — | 0x0 | 20 / 20 | `60a3d9ad466fca76` (ref match) | 2.76 / 2.77 / 3.50 (-9.2%) |
+
+  Because package 18's shipped `v73` graphs are E-BS (whereas shipped `v79/` are non-E-BS), SM8850 defaults to the existing
+  `v73` graphs on the HTP v81 runtime (zero image size increase, preserving `low4/` start self-check fallback). When `v81/`
+  graphs (`soc_model 87`, `dsp_arch v81` in `htp.json`) are provided via `GRAPHS_V81` in `mk_public_sysext.sh`,
+  `vela-npu-setup.service` detects `qcom,kaanapali` / `qcom,sm8850` / `qcom,canoe` / `qcom,canoep` and links
+  `/run/vela-npu/graphs` to `/usr/lib64/vela-npu/v81` for the ~9–14% NPU latency reduction. **[unknown: full 17-graph
+  Linux Docker build and armadaOS sysext run not yet tested]**
+- **Other chips:** our notes cover v73 (SM8550), v75 (SM8650), v79 (SM8750) and v81 (SM8850). For another Hexagon generation you would change
   `soc_model`/`dsp_arch`, check the result on the simulator, and add that chip's runtime libraries. **[unknown: never
   built or tested by us]**
 
@@ -451,7 +472,7 @@ On v79 the 1080p graphs plan less traffic (spill/fill about 21.1–21.2 MB). The
 
 All graphs share one cDSP session in one process.
 
-### 8.2 Files in the image (from Qualcomm QAIRT 2.47.0.260601, unmodified; the V75 files since package 15)
+### 8.2 Files in the image (from Qualcomm QAIRT 2.47.0.260601, unmodified; V75 since package 15, V81 added for SM8850)
 
 | path in image | from SDK | sha256 |
 |---|---|---|
@@ -469,6 +490,10 @@ All graphs share one cDSP session in one process.
 | usr/lib/rfsa/adsp/libQnnHtpV75Skel.so | lib/hexagon-v75/unsigned/libQnnHtpV75Skel.so | 607be3d7ec64df053f019438ad6eea59dd3eea5d5f985001709d52d5663479ba |
 | usr/lib/rfsa/adsp/libQairtHtpV75Skel.so | lib/hexagon-v75/unsigned/libQairtHtpV75Skel.so | 1229177eb5bc53220ddb5c77bb25e4025209e4c8ea0a46712aedd92e4f4e705e |
 | usr/lib/rfsa/adsp/libQnnHtpV75.so | lib/hexagon-v75/unsigned/libQnnHtpV75.so | 14efadf5fdbac6116767d797394cb60454d252748895b284e24d2540b0560449 |
+| usr/lib64/vela-npu/libQnnHtpV81Stub.so | lib/aarch64-oe-linux-gcc11.2/libQnnHtpV81Stub.so | 8e8f8301ec2afaac62b9c607ac35cd92a62a82abf0c23aa3ccd519419ec60d7a |
+| usr/lib/rfsa/adsp/libQnnHtpV81Skel.so | lib/hexagon-v81/unsigned/libQnnHtpV81Skel.so | 0b4fa7419e7265ae33d5e57f214d49cd11abbf7302149bb7ff78d9b602903899 |
+| usr/lib/rfsa/adsp/libQairtHtpV81Skel.so | lib/hexagon-v81/unsigned/libQairtHtpV81Skel.so | 279a84ce80f1b9c3680f7f027b173978307ab2a54dc5f225735491829bd28a60 |
+| usr/lib/rfsa/adsp/libQnnHtpV81.so | lib/hexagon-v81/unsigned/libQnnHtpV81.so | 0262f2b7309fdf358dcb2b823efe549c0cb68db1b88579011a12f5d7c4b779b9 |
 
 The image also carries quic/fastrpc built from source (commit `a56e9d4`): `cdsprpcd`, `libcdsprpc.so.1.0.0` and
 `libcdsp_default_listener.so.1.0.0`. The service uses `LD_LIBRARY_PATH=/usr/lib64/vela-npu` and

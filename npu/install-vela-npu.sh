@@ -1,10 +1,10 @@
 #!/bin/sh
 # Vela NPU system part, package 18: lets Vela run FSR 4 / FSR 4 Fast on the Hexagon NPU (Snapdragon 8 Gen 2, SM8550;
-# Snapdragon 8 Gen 3, SM8650; Snapdragon 8 Elite, SM8750, experimental).
+# Snapdragon 8 Gen 3, SM8650; Snapdragon 8 Elite, SM8750, experimental; Snapdragon 8 Elite Gen 5, SM8850, experimental).
 # Needs sudo ONCE (it adds a system extension, a udev rule and system services). Run in Desktop mode -> Konsole, game closed:
 #   curl -fsSL https://github.com/zrprod9-cmyk/vela/releases/latest/download/install-vela-npu.sh | sudo sh
 # What it does:
-#   1. downloads vela-npu-sysext-18.raw (NPU daemon, 17 FSR 4 graphs for HTP v73 and for HTP v79, 5 ANF graph families for HTP v73, quic/fastrpc, and the
+#   1. downloads vela-npu-sysext-18.raw (NPU daemon, 17 FSR 4 graphs for HTP v73, for HTP v79 and for HTP v81, 5 ANF graph families for HTP v73, quic/fastrpc, and the
 #      Qualcomm AI Engine Direct (QNN) runtime 2.47.0.260601, unmodified) and checks its sha256;
 #   2. reads the DSP shell and C++ runtime (3 files) read-only from your device's own dsp partition;
 #   3. installs both as systemd system extensions in /var/lib/extensions (nothing in armadaOS is overwritten), enables the
@@ -27,12 +27,13 @@ GRAPHS="nf4_k1h nf4_k1h_360 nf4_k1h_450 nf4up_k1h nf4up_k1h_450 nf4up_k1h_360 nf
 # Older packages: one unit per graph, or on-demand slots. All of these are stopped before the image is swapped.
 OLD_UNITS="vela-npu@nf4_exact.service vela-npu@nf4_k1h.service vela-npu@nf4_k1h_360.service vela-npu@nf4_k1h_450.service vela-npu@nf4up_k1h.service vela-npu@nf4up_k1h_450.service vela-npu@nf4up_k1h_360.service vela-npu-up.service"
 # DSP files from the device's dsp partition (/cdsp/<name>): the hashes of the tested Retroid Pocket 6; another hash = a warning
-# (another device, e.g. an SM8750 one, has its own copies: they are used)
+# (another device, e.g. an SM8750 or SM8850 one, has its own copies: they are used)
 DSP_FILES="cb2a0a8ed448bd6e0fea0a81bd0c3892b93373f3eff5c43ca577c7a0628d7251 fastrpc_shell_unsigned_3
 6050f67f1416a69a81d3b7f34fa4ccdca139d8c752a24698a7fd679bf418b90f libc++.so.1
 934f8039214f15b1a692a2278909a9468f1b5561affafbf60efb96e158583563 libc++abi.so.1"
 # fsr4npu-check output hash per daemon (fixed input). SM8550: measured on the tested device (HTP v73 graphs); SM8650 (the same
-# v73 graphs on the HTP v75 runtime) gives the same 17 hashes (measured on a Lenovo TB321FU, PR #6).
+# v73 graphs on the HTP v75 runtime) gives the same 17 hashes (measured on a Lenovo TB321FU, PR #6); SM8850 (HTP v81 graphs):
+# nf4_k1h and nf4up_k1h match the SM8550 hashes bit for bit on hardware (PR #8).
 WANT="fsr4npud_nf4up_k1h 60a3d9ad466fca76
 fsr4npud_nf4up_k1h_450 90a028a11df7fc3e
 fsr4npud_nf4up_k1h_360 f27ed0e09ef0d7b8
@@ -101,12 +102,14 @@ if [ -n "$DT" ]; then
   if echo "$compat" | grep -qx "qcom,sm8550"; then CHIP=SM8550
   elif echo "$compat" | grep -qx "qcom,sm8650"; then CHIP=SM8650
   elif echo "$compat" | grep -qx "qcom,sm8750"; then CHIP=SM8750
-  else fail "the NPU graphs are built for Snapdragon 8 Gen 2 (SM8550), 8 Gen 3 (SM8650) and 8 Elite (SM8750) only; on this chip Vela runs FSR 4 on the GPU"; fi
+  elif echo "$compat" | grep -qx "qcom,kaanapali" || echo "$compat" | grep -qx "qcom,sm8850" || echo "$compat" | grep -qx "qcom,canoe" || echo "$compat" | grep -qx "qcom,canoep"; then CHIP=SM8850
+  else fail "the NPU graphs are built for Snapdragon 8 Gen 2 (SM8550), 8 Gen 3 (SM8650), 8 Elite (SM8750) and 8 Elite Gen 5 (SM8850) only; on this chip Vela runs FSR 4 on the GPU"; fi
 fi
 case $CHIP in
   SM8550) say "  chip: SM8550 (Snapdragon 8 Gen 2), HTP v73 graphs";;
   SM8650) say "  chip: SM8650 (Snapdragon 8 Gen 3), HTP v73 graphs on the HTP v75 runtime (same output hashes as SM8550)";;
   SM8750) say "  chip: Snapdragon 8 Elite (SM8750): experimental. HTP v79 graphs (/usr/lib64/vela-npu/v79)"; WANT=$WANT_SM8750;;
+  SM8850) say "  chip: Snapdragon 8 Elite Gen 5 (SM8850): experimental. HTP v81 runtime (v81/ graphs if bundled, else HTP v73 graphs; same output hashes as SM8550)";;
 esac
 if [ "${VERSION_ID:-}" != 44 ] && [ $FORCE = 0 ]; then
   fail "the image is made for armadaOS VERSION_ID=44, this system has ${VERSION_ID:-?} (systemd-sysext would not load it). --force tries anyway"
@@ -235,6 +238,7 @@ else say "  ANF graphs are not checked on $CHIP (Vela's ANF runs on the Snapdrag
 if [ $bad = 0 ]; then
   say ""; say "Vela NPU: OK - all NPU graphs checked work. Start your game again; the Vela panel shows \"on the NPU\"."
   [ "$CHIP" = SM8750 ] && say "Snapdragon 8 Elite (SM8750) is experimental: please report how it runs."
+  [ "$CHIP" = SM8850 ] && say "Snapdragon 8 Elite Gen 5 (SM8850) is experimental on armadaOS: please report how it runs."
   exit 0
 fi
 say ""; say "Vela NPU: FAILED - $bad of the NPU graphs checked do not work. Logs: journalctl -b -u $UNIT -u vela-npu-listener"

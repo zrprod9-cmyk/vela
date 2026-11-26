@@ -37,7 +37,7 @@ assert sgsr3.dx11_upscaler("anf") == "sgsr3_12" and sgsr3.VULKAN_UPSCALER["anf"]
 assert device.policy({"soc": "SM8550"}, ())["anf"] is True
 assert device.policy({"soc": "SM8550"}, ())["anf_check"] is False, "SM8550: as before, no check file needed"
 assert device.policy({"soc": "SM8650"}, ())["anf"] is True and device.policy({"soc": "SM8650"}, ())["anf_check"] is True, "v73 graphs on the V75 runtime, after the check"
-assert not device.policy({"soc": "SM8750"}, ()).get("anf") and not device.policy({"soc": "SM8250"}, ()).get("anf")
+assert not device.policy({"soc": "SM8750"}, ()).get("anf") and not device.policy({"soc": "SM8850"}, (), ()).get("anf") and not device.policy({"soc": "SM8250"}, ()).get("anf")
 assert device.state({"soc": "SM8550"}, device.policy({"soc": "SM8550"}, ()))["anf"] is True
 
 # ---- the NPU service: the package's families

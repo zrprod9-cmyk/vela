@@ -1,5 +1,5 @@
 #!/bin/bash
-# Inside the container: build one graph $G (a row of /src/graphs.txt) for HTP v73 and v79.
+# Inside the container: build one graph $G (a row of /src/graphs.txt) for HTP v73, v79 and v81.
 # Mounts: /src = this folder (read-only), /qairt = QAIRT 2.47.0.260601, /fsr4vk = fsr4vk checkout, /v = work, /out = output.
 # The generators read their inputs from fixed absolute paths (/vt /ht /ht3 /n /gn /nf /k1h /nsz /b); this script copies
 # them there first.
@@ -38,9 +38,9 @@ python3 $R/bin/x86_64-linux-clang/qnn-onnx-converter -i $m.onnx --custom_io $m.i
   || { echo "$G CONVERT FAIL"; tail -8 convert.log; exit 1; }
 qnn-model-lib-generator -c $m.cpp -b $m.bin -l $m -t x86_64-linux-clang -o libs > libgen.log 2>&1 || { echo "$G LIBGEN FAIL"; tail -8 libgen.log; exit 1; }
 echo "ONNX $G md5=$(md5sum < $m.onnx | cut -c1-32) lib=$(md5sum < libs/x86_64-linux-clang/lib$m.so | cut -c1-32)"
-# 4. HTP context binaries, dsp_arch:soc_model (43 = SM8550, 69 = SM8750), vtcm_mb 8, O 3
+# 4. HTP context binaries, dsp_arch:soc_model (43 = SM8550, 69 = SM8750, 87 = SM8850), vtcm_mb 8, O 3
 rc=0
-for h in v73:43 v79:69; do IFS=: read -r a soc <<< "$h"; mkdir -p /out/$a
+for h in v73:43 v79:69 v81:87; do IFS=: read -r a soc <<< "$h"; mkdir -p /out/$a
   echo "{\"graphs\": [{\"graph_names\": [\"$m\"], \"vtcm_mb\": 8, \"O\": 3}], \"devices\": [{\"soc_model\": $soc, \"dsp_arch\": \"$a\"}]}" > htp_$a.json
   echo "{\"backend_extensions\": {\"shared_library_path\": \"$R/lib/x86_64-linux-clang/libQnnHtpNetRunExtensions.so\", \"config_file_path\": \"$W/htp_$a.json\"}}" > ctxcfg_$a.json
   qnn-context-binary-generator --backend $R/lib/x86_64-linux-clang/libQnnHtp.so --model libs/x86_64-linux-clang/lib$m.so \

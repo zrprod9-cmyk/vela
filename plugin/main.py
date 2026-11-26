@@ -95,7 +95,8 @@ class Plugin:
         # 0.8.16: the chip (device-tree / socinfo) decides whether the NPU and FSR 4 Fast are offered at all
         self.dev = device.detect()
         self.v79_dirs = device.V79_DIRS + (os.path.join(ASSETS, "npu", "v79"),)
-        self.chip = device.policy(self.dev, self.v79_dirs)
+        self.v81_dirs = device.V81_DIRS + (os.path.join(ASSETS, "npu", "v81"),)
+        self.chip = device.policy(self.dev, self.v79_dirs, self.v81_dirs)
         decky.logger.info(f"Vela device: {device.state(self.dev, self.chip)}")
         self.npu = npu.Npu(os.path.join(ASSETS, "npu"), home, settings, log=decky.logger.info, chip=self.chip)
         try:
@@ -395,7 +396,7 @@ class Plugin:
         """window: Steam's resolution override for the game as the panel read it (GetResolutionOverrideForApp; None = not
         read): the steps say when it is not the window the mode needs (0.8.11)."""
         if getattr(self, "chip", None) is not None:
-            device.refresh(self, self.v79_dirs, log=decky.logger.info)  # 0.8.21: NPU part installed while the plugin runs
+            device.refresh(self, self.v79_dirs, self.v81_dirs, log=decky.logger.info)  # 0.8.21: NPU part installed while the plugin runs
         running = gameutil.running_appids()
         self._learn(appid, running)  # 0.8.26: a launcher's shortcut that runs: where its game is (the scan below uses it)
         self._mirror_live(running)

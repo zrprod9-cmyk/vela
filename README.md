@@ -51,6 +51,7 @@ It replaces a game's own upscaler (DLSS, FSR 2/3 or XeSS) with **FSR 4**, which 
 | AYN Odin 2 / Odin 2 Mini / Odin 2 Portal / Thor | Snapdragon 8 Gen 2 | ✅ same chip as the Retroid Pocket 6 |
 | Lenovo Legion Tab Gen 3 and other Snapdragon 8 Gen 3 devices | Snapdragon 8 Gen 3 | 🧪 FSR 4 on the NPU since NPU package 15 (Vela 0.8.24), checked by a contributor, not yet by us |
 | AYN Odin 3 and other Snapdragon 8 Elite devices | Snapdragon 8 Elite | 🧪 FSR 4 on the NPU, experimental |
+| Snapdragon 8 Elite Gen 5 devices | Snapdragon 8 Elite Gen 5 | 🧪 FSR 4 on the NPU (HTP v81), tested on hardware for 1080p |
 | Retroid Pocket 5 / Retroid Pocket Mini | Snapdragon 865 | FSR 3 and SGSR 2 (no FSR 4) |
 
 You need **armadaOS** with **Decky Loader**, and a game that offers **DLSS, FSR 2/3 or XeSS** in its settings.

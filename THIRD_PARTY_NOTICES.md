@@ -38,7 +38,7 @@ The NPU system extension `vela-npu-sysext-18.raw` (package 18, sha256
 
 - `fsr4npud` (the NPU daemon) and `fsr4npu-check`: ours, GPL-3.0-or-later with a GPL-3.0 section 7 additional permission
   for the Qualcomm runtime (`LICENSING.md`);
-- the 17 FSR 4 graphs for HTP v73 and the same 17 for HTP v79: the AMD FSR 4.1.1 network (AMD's MIT licence, notice below), compiled by us with
+- the 17 FSR 4 graphs for HTP v73, the same 17 for HTP v79, and optionally the same 17 for HTP v81 (when built with `GRAPHS_V81`): the AMD FSR 4.1.1 network (AMD's MIT licence, notice below), compiled by us with
   Qualcomm's QAIRT tools;
 - the FastRPC client and DSP listener (`cdsprpcd`, `libcdsprpc`, `libcdsp_default_listener`): quic/fastrpc `a56e9d4`,
   built from source, BSD-3-Clause, text inside the image;
@@ -53,7 +53,8 @@ reads them from the device's own dsp partition.
 - **Included** (only inside `vela-npu-sysext-18.raw`, never as a separate download): `libQnnHtp.so`,
   `libQnnHtpV73Stub.so`, `libQnnSystem.so`, `libQnnHtpV73Skel.so`, `libQairtHtpV73Skel.so`, `libQnnHtpV73.so`,
   `libQnnHtpV79Stub.so`, `libQnnHtpV79Skel.so`, `libQairtHtpV79Skel.so`, `libQnnHtpV79.so`, `libQnnHtpV75Stub.so`,
-  `libQnnHtpV75Skel.so`, `libQairtHtpV75Skel.so`, `libQnnHtpV75.so` from the
+  `libQnnHtpV75Skel.so`, `libQairtHtpV75Skel.so`, `libQnnHtpV75.so`, `libQnnHtpV81Stub.so`, `libQnnHtpV81Skel.so`,
+  `libQairtHtpV81Skel.so`, `libQnnHtpV81.so` from the
   Qualcomm AI Engine Direct SDK (QAIRT) 2.47.0.260601, unmodified.
 - **Licence:** Qualcomm AI Stack License, shipped unchanged in the image as
   `/usr/share/licenses/armada-vela-npu/Qualcomm-AI-Stack-LICENSE.pdf`, with Qualcomm's third-party Notice File
